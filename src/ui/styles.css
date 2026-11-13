@@ -720,3 +720,37 @@ button.primary:hover:not(:disabled) {
 .scopes__canvas--histogram {
   aspect-ratio: 512 / 200;
 }
+
+.stats {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.stats th,
+.stats td {
+  text-align: right;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.stats th {
+  color: var(--dim);
+  font-weight: 500;
+}
+.stats td:first-child {
+  text-align: left;
+  color: var(--dim);
+}
+.steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text);
+}
+.steps b {
+  color: var(--strong);
+}
+input[type='radio'] {
+  accent-color: #9a9a9a;
+}

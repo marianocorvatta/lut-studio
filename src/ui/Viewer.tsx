@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sampleLut3D, type RGB } from '../color/lut'
 import type { Prepared } from '../color/pipeline'
+import type { FloatImage } from '../io/image'
 import { GpuUnsupportedError } from '../gpu/gl'
 import { Renderer, type RenderLayer } from '../gpu/renderer'
 import { useApp } from './store'
@@ -21,6 +22,8 @@ export interface ViewerProps {
    * que es exactamente el que se exporta.
    */
   bake?: { prepared: Prepared; size: number }
+  /** imagen a mostrar en lugar de la del estado (pantalla de validación) */
+  image?: FloatImage | null
   /** se llama después de cada render (para scopes) */
   onRendered?: (r: Renderer) => void
 }
@@ -35,7 +38,7 @@ interface Pick {
 const fmt = (v: number) => (Object.is(v, -0) ? 0 : v).toFixed(4)
 const code10 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 1023)
 
-export function Viewer({ layers, computeOutput, bake, onRendered }: ViewerProps) {
+export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOverride }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<Renderer | null>(null)
   const rafRef = useRef(0)
@@ -45,7 +48,10 @@ export function Viewer({ layers, computeOutput, bake, onRendered }: ViewerProps)
   const [zoom, setZoom] = useState(1)
   const pointerRef = useRef<{ x: number; y: number } | null>(null)
 
-  const image = useApp((s) => s.image)
+  const storeImage = useApp((s) => s.image)
+  const image = imageOverride !== undefined ? imageOverride : storeImage
+  const imageRef = useRef(image)
+  imageRef.current = image
   const interpolation = useApp((s) => s.interpolation)
   const display = useApp((s) => s.display)
   const compare = useApp((s) => s.compare)
@@ -152,7 +158,7 @@ export function Viewer({ layers, computeOutput, bake, onRendered }: ViewerProps)
   const updatePick = useCallback(() => {
     const r = rendererRef.current
     const p = pointerRef.current
-    const img = useApp.getState().image
+    const img = imageRef.current
     if (!r || !p || !img) return setPick(null)
     const [fx, fy] = r.screenToImage(p.x, p.y)
     const x = Math.floor(fx)

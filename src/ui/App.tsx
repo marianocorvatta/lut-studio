@@ -8,12 +8,13 @@ import { useApp, type AppMode } from './store'
 import { ScopesPanel } from './ScopesPanel'
 import { StudioPanel } from './StudioPanel'
 import { TestPanel } from './TestPanel'
+import { ValidatePanel, validationImage } from './ValidatePanel'
 import { Viewer } from './Viewer'
 
 const MODES: { id: AppMode; label: string; ready: boolean }[] = [
   { id: 'studio', label: 'Estudio', ready: true },
   { id: 'test', label: 'Probar .cube', ready: true },
-  { id: 'validate', label: 'Validar con DaVinci', ready: false },
+  { id: 'validate', label: 'Validar con DaVinci', ready: true },
 ]
 
 function isTyping(e: KeyboardEvent): boolean {
@@ -43,6 +44,13 @@ export function App() {
     [params, conversionLut, creativeLut, interpolation],
   )
   const bake = useMemo(() => ({ prepared, size: lutSize }), [prepared, lutSize])
+  const validation = useApp((s) => s.validation)
+  const validateImage = useMemo(
+    () => (mode === 'validate' ? validationImage(validation.view) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mode, validation.view, validation.stats, validation.still, validation.expected, validation.amplify],
+  )
+  const noLayers = useMemo<RenderLayer[]>(() => [], [])
 
   const layers: RenderLayer[] = useMemo(
     () => testLayers.filter((l) => l.enabled && l.opacity > 0).map((l) => ({ lut: l.lut, opacity: l.opacity })),
@@ -188,7 +196,13 @@ export function App() {
 
       <main className="main">
         <div className="stage">
-          {mode === 'studio' ? <Viewer bake={bake} /> : <Viewer layers={layers} computeOutput={computeOutput} />}
+          {mode === 'studio' ? (
+            <Viewer bake={bake} />
+          ) : mode === 'validate' ? (
+            <Viewer layers={noLayers} image={validateImage} />
+          ) : (
+            <Viewer layers={layers} computeOutput={computeOutput} />
+          )}
           <ScopesPanel />
           {busy && <div className="busy">{busy}</div>}
           <div className="notices">
@@ -206,6 +220,7 @@ export function App() {
         <aside className="side">
           {mode === 'studio' && <StudioPanel prepared={prepared} />}
           {mode === 'test' && <TestPanel />}
+          {mode === 'validate' && <ValidatePanel prepared={prepared} />}
           <footer className="side__foot">
             <p>
               <b>Visualización:</b> la transformación de display solo cambia cómo se ve en este monitor. Los valores del

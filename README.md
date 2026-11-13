@@ -45,7 +45,7 @@ alcanza con reemplazar ese archivo.
 - [x] **Fase 3** — Conversión Apple Log 2 → Rec.709 (por `.cube` y por fórmula) y etapa de entrada.
 - [x] **Fase 4** — Herramientas creativas.
 - [x] **Fase 5** — Scopes, comparación, guardado de proyecto, undo/redo.
-- [ ] Fase 6 — Chart de prueba y validación contra DaVinci.
+- [x] **Fase 6** — Chart de prueba y validación contra DaVinci.
 
 ## El preview es el LUT
 
@@ -183,3 +183,59 @@ rueda: zoom · arrastrar: mover. En Windows/Linux, `Ctrl` en lugar de `⌘`.
   `LUT_3D_INPUT_RANGE`/`LUT_1D_INPUT_RANGE` (variante de Resolve), líneas vacías, BOM y finales de línea Windows/Unix.
   Orden estándar: el rojo varía más rápido, después el verde y por último el azul.
 - Writer: `TITLE`, `LUT_3D_SIZE`, `DOMAIN_MIN 0 0 0`, `DOMAIN_MAX 1 1 1`, valores con 6 decimales.
+
+## Validación contra DaVinci
+
+La pantalla **Validar con DaVinci** compara píxel a píxel lo que calcula la app con lo que devuelve DaVinci.
+
+### 1. Generar el chart
+
+En la app: *Validar con DaVinci → Descargar chart (TIFF 16 bits)*. Es un TIFF RGB de 16 bits, 1920×1080, sin
+perfil ICC, con:
+
+- rampa de gris continua y gris en 33 y en 65 escalones (caen exactamente en los nodos de los LUTs);
+- rampas roja, verde, azul, cian, magenta y amarilla;
+- barrido de tonos con luminosidad y saturación variables;
+- bloques aleatorios de 8×8 que cubren todo el cubo RGB (donde trilineal y tetraédrica más difieren).
+
+### 2. Pasarlo por DaVinci
+
+1. Proyecto nuevo con Color Science **DaVinci YRGB**, **sin gestión de color** (sin RCM ni ACES). Timeline de
+   **1920×1080**.
+2. *Project Settings → Color Management → 3D lookup table interpolation*: **la misma que en la app**
+   (tetraédrica o trilineal).
+3. Importá el chart al timeline. En *Clip Attributes*, **Data Levels: Full**. Si el timeline tuviera otro tamaño,
+   *Image Scaling: Center crop with no resizing*.
+4. En la página Color, en el **primer nodo**, aplicá el `.cube` exportado desde la app, y nada más.
+5. Exportá un cuadro en **TIFF RGB de 16 bits**: página Deliver con formato TIFF, codec RGB 16 bits, un solo cuadro,
+   1920×1080, Data Levels Full. También sirve *Grab Still → Export* en TIFF de 16 bits.
+
+### 3. Comparar en la app
+
+En *Validar con DaVinci*:
+
+1. Elegí qué LUT validar: el actual del Estudio (horneado en GPU, el mismo que se exporta) o un `.cube`.
+2. Cargá el TIFF exportado por DaVinci.
+
+La app calcula el resultado esperado (el chart con el LUT aplicado en CPU, con la interpolación elegida) y muestra:
+
+- error máximo y promedio, en float y en códigos de 10 bits, global y por canal;
+- porcentaje de píxeles que difieren más de medio código y más de un código de 10 bits;
+- el peor píxel, con su posición y los valores de la app y de DaVinci;
+- un mapa de diferencias amplificable (×1 a ×10000) en el viewer, y las vistas "App" y "DaVinci" para comparar.
+
+El piso de error es la cuantización a 16 bits del still (7.6e-6) más el redondeo a 6 decimales del `.cube` (5e-7).
+
+### Prueba de la cadena sin DaVinci
+
+Para probar la pantalla de punta a punta se armó un "still" con otra implementación: el `.cube` exportado se
+aplicó al chart con numpy (interpolación tetraédrica independiente) y el resultado se cuantizó a 16 bits.
+Resultado en la app con un look que usa todas las etapas:
+
+| Interpolación en la app | Error máximo | Error promedio | Píxeles > 1 código de 10 bits |
+|---|---|---|---|
+| Tetraédrica (igual que la referencia) | 0.000008 (0.01 códigos) | 0.000001 | 0 % |
+| Trilineal (no coincide) | 0.137 (140.6 códigos) | 0.0028 | 27 % |
+
+Con la misma interpolación, el error queda en el piso de cuantización. Con otra, la pantalla lo detecta de
+inmediato. **Falta la prueba con DaVinci real**: hay que hacerla siguiendo los pasos de arriba.

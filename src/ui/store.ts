@@ -5,6 +5,7 @@ import type { CompareMode, DisplayTransform } from '../gpu/renderer'
 import type { ScopeMode } from '../gpu/scopes'
 import type { FloatImage } from '../io/image'
 import type { LutRef } from '../io/project'
+import type { CompareStats } from '../color/compare'
 import { commitHistory, newHistory, redoHistory, undoHistory, type History } from './history'
 
 export type AppMode = 'studio' | 'test' | 'validate'
@@ -21,6 +22,21 @@ export interface TestLayer {
 export interface NamedLut {
   name: string
   lut: Lut
+}
+
+export type ValidateView = 'expected' | 'still' | 'diff'
+
+export interface ValidationState {
+  /** qué LUT se compara: el actual del Estudio (horneado en GPU) o un .cube elegido */
+  lutChoice: 'studio' | 'file'
+  fileLut: NamedLut | null
+  still: FloatImage | null
+  expected: FloatImage | null
+  stats: CompareStats | null
+  /** nombre del LUT con el que se calculó `stats` */
+  comparedWith: string | null
+  view: ValidateView
+  amplify: number
 }
 
 export interface Notice {
@@ -48,6 +64,7 @@ interface AppState {
   /** incluir los LUTs dentro del JSON al guardar el proyecto */
   embedLuts: boolean
   scopeMode: ScopeMode | 'off'
+  validation: ValidationState
   notices: Notice[]
   gpuError: string | null
   busy: string | null
@@ -72,6 +89,7 @@ interface AppState {
   loadState: (s: Partial<Pick<AppState, 'params' | 'lutSize' | 'interpolation' | 'conversionLut' | 'creativeLut' | 'missingLuts'>>) => void
   setEmbedLuts: (v: boolean) => void
   setScopeMode: (m: ScopeMode | 'off') => void
+  updateValidation: (patch: Partial<ValidationState>) => void
   setConversionLut: (l: NamedLut | null) => void
   setCreativeLut: (l: NamedLut | null) => void
   setLutSize: (n: LutSize) => void
@@ -110,6 +128,16 @@ export const useApp = create<AppState>((set, get) => ({
   missingLuts: { conversion: null, creative: null },
   embedLuts: false,
   scopeMode: 'waveform',
+  validation: {
+    lutChoice: 'studio',
+    fileLut: null,
+    still: null,
+    expected: null,
+    stats: null,
+    comparedWith: null,
+    view: 'diff',
+    amplify: 100,
+  },
   notices: [],
   gpuError: null,
   busy: null,
@@ -160,6 +188,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setEmbedLuts: (embedLuts) => set({ embedLuts }),
   setScopeMode: (scopeMode) => set({ scopeMode }),
+  updateValidation: (patch) => set((s) => ({ validation: { ...s.validation, ...patch } })),
   setConversionLut: (conversionLut) => set((s) => ({ conversionLut, missingLuts: { ...s.missingLuts, conversion: null } })),
   setCreativeLut: (creativeLut) => set((s) => ({ creativeLut, missingLuts: { ...s.missingLuts, creative: null } })),
   setLutSize: (lutSize) => set({ lutSize }),
