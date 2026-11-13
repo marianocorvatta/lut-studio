@@ -3,8 +3,9 @@ import { applyLutStack, type RGB } from '../color/lut'
 import { prepare } from '../color/pipeline'
 import type { RenderLayer } from '../gpu/renderer'
 import { readFile } from '../io/platform'
-import { handleDroppedFiles, openImage } from './actions'
+import { exportCube, handleDroppedFiles, openImage, openProject, saveProject } from './actions'
 import { useApp, type AppMode } from './store'
+import { ScopesPanel } from './ScopesPanel'
 import { StudioPanel } from './StudioPanel'
 import { TestPanel } from './TestPanel'
 import { Viewer } from './Viewer'
@@ -60,8 +61,20 @@ export function App() {
   // atajos de teclado
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
+      if (isTyping(e)) return
       const st = useApp.getState()
+      if (e.metaKey || e.ctrlKey) {
+        const k = e.key.toLowerCase()
+        if (k === 'z' && !e.shiftKey) st.undo()
+        else if ((k === 'z' && e.shiftKey) || k === 'y') st.redo()
+        else if (k === 's') saveProject()
+        else if (k === 'e' && st.mode === 'studio') exportCube()
+        else if (k === 'o' && e.shiftKey) void openProject()
+        else return
+        e.preventDefault()
+        return
+      }
+      if (e.altKey) return
       switch (e.key.toLowerCase()) {
         case 'b':
           if (!e.repeat) st.setCompare(st.compare === 'before' ? 'off' : 'before')
@@ -176,6 +189,7 @@ export function App() {
       <main className="main">
         <div className="stage">
           {mode === 'studio' ? <Viewer bake={bake} /> : <Viewer layers={layers} computeOutput={computeOutput} />}
+          <ScopesPanel />
           {busy && <div className="busy">{busy}</div>}
           <div className="notices">
             {notices.map((n) => (
@@ -199,7 +213,8 @@ export function App() {
             </p>
             <p className="keys">
               <kbd>O</kbd> abrir · <kbd>S</kbd> cortina · <kbd>B</kbd> antes · <kbd>F</kbd> ajustar · <kbd>1</kbd> 100% ·{' '}
-              <kbd>T</kbd> interpolación · rueda: zoom · arrastrar: mover
+              <kbd>T</kbd> interpolación · <kbd>⌘Z</kbd> deshacer · <kbd>⇧⌘Z</kbd> rehacer · <kbd>⌘S</kbd> guardar proyecto ·{' '}
+              <kbd>⇧⌘O</kbd> abrir proyecto · <kbd>⌘E</kbd> exportar .cube · rueda: zoom · arrastrar: mover
             </p>
           </footer>
         </aside>

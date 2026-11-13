@@ -2,7 +2,10 @@ import { create } from 'zustand'
 import type { Interpolation, Lut } from '../color/lut'
 import { defaultParams, type LookParams, type LutSize } from '../color/params'
 import type { CompareMode, DisplayTransform } from '../gpu/renderer'
+import type { ScopeMode } from '../gpu/scopes'
 import type { FloatImage } from '../io/image'
+import type { LutRef } from '../io/project'
+import { commitHistory, newHistory, redoHistory, undoHistory, type History } from './history'
 
 export type AppMode = 'studio' | 'test' | 'validate'
 
@@ -39,6 +42,12 @@ interface AppState {
   conversionLut: NamedLut | null
   creativeLut: NamedLut | null
   lutSize: LutSize
+  history: History
+  /** LUTs que pide el proyecto abierto y todavía no se cargaron */
+  missingLuts: { conversion: LutRef | null; creative: LutRef | null }
+  /** incluir los LUTs dentro del JSON al guardar el proyecto */
+  embedLuts: boolean
+  scopeMode: ScopeMode | 'off'
   notices: Notice[]
   gpuError: string | null
   busy: string | null
@@ -57,6 +66,12 @@ interface AppState {
   resetParams: () => void
   /** marca el fin de un cambio (punto del historial de deshacer) */
   commit: () => void
+  undo: () => void
+  redo: () => void
+  /** reemplaza los parámetros (al abrir un proyecto) y reinicia el historial */
+  loadState: (s: Partial<Pick<AppState, 'params' | 'lutSize' | 'interpolation' | 'conversionLut' | 'creativeLut' | 'missingLuts'>>) => void
+  setEmbedLuts: (v: boolean) => void
+  setScopeMode: (m: ScopeMode | 'off') => void
   setConversionLut: (l: NamedLut | null) => void
   setCreativeLut: (l: NamedLut | null) => void
   setLutSize: (n: LutSize) => void
@@ -75,7 +90,11 @@ interface AppState {
 
 let seq = 1
 
-export const useApp = create<AppState>((set) => ({
+let autoCommit: ReturnType<typeof setTimeout> | undefined
+/** los cambios que no llaman a commit (toggles, selects) se registran solos después de una pausa */
+const AUTO_COMMIT_MS = 600
+
+export const useApp = create<AppState>((set, get) => ({
   mode: 'studio',
   image: null,
   interpolation: 'tetrahedral',
@@ -87,6 +106,10 @@ export const useApp = create<AppState>((set) => ({
   conversionLut: null,
   creativeLut: null,
   lutSize: 33,
+  history: newHistory(defaultParams()),
+  missingLuts: { conversion: null, creative: null },
+  embedLuts: false,
+  scopeMode: 'waveform',
   notices: [],
   gpuError: null,
   busy: null,
@@ -99,16 +122,46 @@ export const useApp = create<AppState>((set) => ({
   setDisplay: (display) => set({ display }),
   setCompare: (compare) => set({ compare }),
   setSplit: (split) => set({ split: Math.min(1, Math.max(0, split)) }),
-  updateParams: (fn) =>
+  updateParams: (fn) => {
     set((s) => {
       const params = structuredClone(s.params)
       fn(params)
       return { params }
-    }),
-  resetParams: () => set({ params: defaultParams() }),
-  commit: () => {},
-  setConversionLut: (conversionLut) => set({ conversionLut }),
-  setCreativeLut: (creativeLut) => set({ creativeLut }),
+    })
+    clearTimeout(autoCommit)
+    autoCommit = setTimeout(() => get().commit(), AUTO_COMMIT_MS)
+  },
+  resetParams: () => {
+    set({ params: defaultParams() })
+    get().commit()
+  },
+  commit: () => {
+    clearTimeout(autoCommit)
+    set((s) => {
+      const history = commitHistory(s.history, s.params)
+      return history === s.history ? s : { history }
+    })
+  },
+  undo: () => {
+    clearTimeout(autoCommit)
+    const s = get()
+    const r = undoHistory(s.history, s.params)
+    if (r) set({ history: r.h, params: r.params })
+  },
+  redo: () => {
+    clearTimeout(autoCommit)
+    const s = get()
+    const r = redoHistory(s.history, s.params)
+    if (r) set({ history: r.h, params: r.params })
+  },
+  loadState: (next) => {
+    clearTimeout(autoCommit)
+    set((s) => ({ ...next, history: newHistory(next.params ?? s.params) }))
+  },
+  setEmbedLuts: (embedLuts) => set({ embedLuts }),
+  setScopeMode: (scopeMode) => set({ scopeMode }),
+  setConversionLut: (conversionLut) => set((s) => ({ conversionLut, missingLuts: { ...s.missingLuts, conversion: null } })),
+  setCreativeLut: (creativeLut) => set((s) => ({ creativeLut, missingLuts: { ...s.missingLuts, creative: null } })),
   setLutSize: (lutSize) => set({ lutSize }),
   addTestLayer: (name, lut) =>
     set((s) => ({ testLayers: [...s.testLayers, { id: `l${seq++}`, name, lut, enabled: true, opacity: 1 }] })),

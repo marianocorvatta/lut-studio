@@ -1,17 +1,18 @@
 /**
  * Viewer: imagen float -> (pila de LUTs en float32) -> transformación de display -> pantalla.
  *
- * Todo el procesamiento ocurre en texturas RGBA32F a la resolución del viewport.
+ * Todo el procesamiento ocurre en texturas RGBA32F. El preview se procesa a la resolución del viewport;
+ * los scopes usan una versión de la imagen completa (no dependen del zoom ni del paneo).
  * La transformación de display es solo para mostrar: nunca toca los valores del LUT.
  */
-import type { Interpolation, Lut } from '../color/lut'
-import type { FloatImage } from '../io/image'
-import type { Lut3D } from '../color/lut'
+import type { Interpolation, Lut, Lut3D } from '../color/lut'
 import type { Prepared } from '../color/pipeline'
+import type { FloatImage } from '../io/image'
 import { Baker } from './baker'
 import { createGL, createTarget, createTexture, disposeTarget, drawTo, Program, readTarget, type GL, type Target } from './gl'
 import { LutCache, type GpuLut } from './lutCache'
 import { LUT_GLSL } from './lutGlsl'
+import { Scopes, type ScopeImage, type ScopeMode } from './scopes'
 
 export type { GpuLut } from './lutCache'
 
@@ -27,7 +28,7 @@ export interface View {
   /** centro de la vista en píxeles de imagen */
   cx: number
   cy: number
-  /** píxeles de pantalla (físicos) por píxel de imagen */
+  /** píxeles de destino por píxel de imagen */
   scale: number
 }
 
@@ -107,6 +108,41 @@ void main() {
   o = vec4(c, 1.0);
 }`
 
+/** Tres texturas float del mismo tamaño: la imagen remuestreada y dos para ir aplicando LUTs. */
+class Chain {
+  before: Target | null = null
+  ping: Target | null = null
+  pong: Target | null = null
+  width = 0
+  height = 0
+  private gl: WebGL2RenderingContext
+
+  constructor(gl: WebGL2RenderingContext) {
+    this.gl = gl
+  }
+
+  ensure(w: number, h: number): boolean {
+    if (this.before && w === this.width && h === this.height) return false
+    this.dispose()
+    this.before = createTarget(this.gl, w, h)
+    this.ping = createTarget(this.gl, w, h)
+    this.pong = createTarget(this.gl, w, h)
+    this.width = w
+    this.height = h
+    return true
+  }
+
+  dispose(): void {
+    disposeTarget(this.gl, this.before)
+    disposeTarget(this.gl, this.ping)
+    disposeTarget(this.gl, this.pong)
+    this.before = this.ping = this.pong = null
+  }
+}
+
+/** Ancho máximo de la versión de la imagen que alimenta los scopes. */
+export const SCOPE_SOURCE_MAX = 960
+
 export class Renderer {
   readonly g: GL
   readonly canvas: HTMLCanvasElement
@@ -116,14 +152,14 @@ export class Renderer {
   private imgTex: WebGLTexture | null = null
   private imgW = 0
   private imgH = 0
-  private before: Target | null = null
-  private ping: Target | null = null
-  private pong: Target | null = null
+  private view_: Chain
+  private scopeChain: Chain
   private lutCache: LutCache
   private baker: Baker
+  private scopes: Scopes | null = null
   private layers: RenderLayer[] = []
   private p3Canvas = false
-  /** última textura procesada (para scopes) */
+  /** última textura procesada del viewport */
   processed: Target | null = null
 
   view: View = { cx: 0, cy: 0, scale: 1 }
@@ -140,12 +176,18 @@ export class Renderer {
     this.resample = new Program(gl, RESAMPLE_FS)
     this.lutProg = new Program(gl, LUT_FS)
     this.displayProg = new Program(gl, DISPLAY_FS)
+    this.view_ = new Chain(gl)
+    this.scopeChain = new Chain(gl)
     this.lutCache = new LutCache(this.g)
     this.baker = new Baker(this.g)
   }
 
   get gl(): WebGL2RenderingContext {
     return this.g.gl
+  }
+
+  get hasImage(): boolean {
+    return this.imgTex !== null
   }
 
   setImage(img: FloatImage | null): void {
@@ -196,17 +238,10 @@ export class Renderer {
     const dpr = window.devicePixelRatio || 1
     const w = Math.max(1, Math.round(c.clientWidth * dpr))
     const h = Math.max(1, Math.round(c.clientHeight * dpr))
-    if (c.width === w && c.height === h && this.before) return false
+    const changed = c.width !== w || c.height !== h
     c.width = w
     c.height = h
-    const { gl } = this.g
-    disposeTarget(gl, this.before)
-    disposeTarget(gl, this.ping)
-    disposeTarget(gl, this.pong)
-    this.before = createTarget(gl, w, h)
-    this.ping = createTarget(gl, w, h)
-    this.pong = createTarget(gl, w, h)
-    return true
+    return this.view_.ensure(w, h) || changed
   }
 
   fit(margin = 0.94): void {
@@ -237,56 +272,60 @@ export class Renderer {
     }
   }
 
+  /** Remuestrea la imagen en `chain` con la vista dada y aplica la pila de LUTs. Devuelve el resultado. */
+  private process(chain: Chain, view: View, applyLayers: boolean): Target {
+    const { gl } = this.g
+    const before = chain.before!
+    if (!this.imgTex) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, before.fbo)
+      gl.viewport(0, 0, before.width, before.height)
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      return before
+    }
+    this.resample
+      .use()
+      .tex('uImg', 0, this.imgTex)
+      .v2('uImgSize', this.imgW, this.imgH)
+      .v2('uViewport', before.width, before.height)
+      .v2('uCenter', view.cx, view.cy)
+      .f('uScale', view.scale)
+    drawTo(gl, before)
+    let src = before
+    if (!applyLayers) return src
+    const interp = this.interpolation === 'trilinear' ? 0 : 1
+    for (const layer of this.layers) {
+      const lut = isGpuLut(layer.lut) ? layer.lut : this.lutCache.get(layer.lut)
+      const dst = src === chain.ping ? chain.pong! : chain.ping!
+      this.lutProg
+        .use()
+        .tex('uSrc', 0, src.tex)
+        .tex('uLut', 1, lut.tex)
+        .i('uSize', lut.size)
+        .i('uKind', lut.kind === '3D' ? 0 : 1)
+        .i('uInterp', interp)
+        .f('uOpacity', layer.opacity)
+        .v3('uDomMin', lut.domainMin)
+        .v3('uDomMax', lut.domainMax)
+      drawTo(gl, dst)
+      src = dst
+    }
+    return src
+  }
+
   render(): void {
     const { gl } = this.g
     this.resize()
     this.applyCanvasColorSpace()
     const W = this.canvas.width
     const H = this.canvas.height
-    const before = this.before!
-
-    if (!this.imgTex) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, before.fbo)
-      gl.viewport(0, 0, W, H)
-      gl.clearColor(0, 0, 0, 0)
-      gl.clear(gl.COLOR_BUFFER_BIT)
-    } else {
-      this.resample
-        .use()
-        .tex('uImg', 0, this.imgTex)
-        .v2('uImgSize', this.imgW, this.imgH)
-        .v2('uViewport', W, H)
-        .v2('uCenter', this.view.cx, this.view.cy)
-        .f('uScale', this.view.scale)
-      drawTo(gl, before)
-    }
-
-    let src = before
-    if (this.imgTex && this.compare !== 'before') {
-      const interp = this.interpolation === 'trilinear' ? 0 : 1
-      for (const layer of this.layers) {
-        const lut = isGpuLut(layer.lut) ? layer.lut : this.lutCache.get(layer.lut)
-        const dst = src === this.ping ? this.pong! : this.ping!
-        this.lutProg
-          .use()
-          .tex('uSrc', 0, src.tex)
-          .tex('uLut', 1, lut.tex)
-          .i('uSize', lut.size)
-          .i('uKind', lut.kind === '3D' ? 0 : 1)
-          .i('uInterp', interp)
-          .f('uOpacity', layer.opacity)
-          .v3('uDomMin', lut.domainMin)
-          .v3('uDomMax', lut.domainMax)
-        drawTo(gl, dst)
-        src = dst
-      }
-    }
-    this.processed = src
+    const out = this.process(this.view_, this.view, this.compare !== 'before')
+    this.processed = out
 
     this.displayProg
       .use()
-      .tex('uBefore', 0, before.tex)
-      .tex('uAfter', 1, src.tex)
+      .tex('uBefore', 0, this.view_.before!.tex)
+      .tex('uAfter', 1, out.tex)
       .i('uCompare', this.compare === 'off' ? 0 : this.compare === 'split' ? 1 : 2)
       .f('uSplit', this.split * W)
       .f('uLine', Math.max(1, W / Math.max(1, this.canvas.clientWidth)) * 0.75)
@@ -295,14 +334,40 @@ export class Renderer {
     drawTo(gl, null, W, H)
   }
 
+  /**
+   * Procesa la imagen COMPLETA (reducida a SCOPE_SOURCE_MAX de ancho como máximo) con la misma pila de
+   * LUTs que el preview. Es la fuente de los scopes. `before`: sin aplicar los LUTs.
+   */
+  renderScopeSource(before = false): Target | null {
+    if (!this.imgTex) return null
+    const k = Math.min(1, SCOPE_SOURCE_MAX / this.imgW)
+    const w = Math.max(1, Math.round(this.imgW * k))
+    const h = Math.max(1, Math.round(this.imgH * k))
+    this.scopeChain.ensure(w, h)
+    return this.process(this.scopeChain, { cx: this.imgW / 2, cy: this.imgH / 2, scale: w / this.imgW }, !before)
+  }
+
+  /** Calcula un scope sobre la imagen completa procesada (o sin procesar, con `before`). */
+  computeScope(mode: ScopeMode, before = false): ScopeImage | null {
+    const src = this.renderScopeSource(before)
+    if (!src) return null
+    this.scopes ??= new Scopes(this.g)
+    return this.scopes.compute(src, mode)
+  }
+
+  get scopesPrecise(): boolean {
+    this.scopes ??= new Scopes(this.g)
+    return this.scopes.precise
+  }
+
   dispose(): void {
     const { gl } = this.g
+    this.scopes?.dispose()
     if (this.imgTex) gl.deleteTexture(this.imgTex)
     this.lutCache.dispose()
     this.baker.dispose()
-    disposeTarget(gl, this.before)
-    disposeTarget(gl, this.ping)
-    disposeTarget(gl, this.pong)
+    this.view_.dispose()
+    this.scopeChain.dispose()
     this.resample.dispose()
     this.lutProg.dispose()
     this.displayProg.dispose()

@@ -45,3 +45,4 @@ export function decodeText(bytes: ArrayBuffer): string {
 
 export const IMAGE_ACCEPT = '.tif,.tiff,.png,.jpg,.jpeg'
 export const CUBE_ACCEPT = '.cube'
+export const PROJECT_ACCEPT = '.json,application/json'

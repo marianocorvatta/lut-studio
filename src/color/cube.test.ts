@@ -64,6 +64,16 @@ describe('writer .cube', () => {
   })
 })
 
+describe('writer .cube exacto', () => {
+  it('precision "exact" vuelve bit a bit, incluso con valores muy chicos', () => {
+    const lut = identityLut3D(9)
+    const rand = rng(99)
+    for (let i = 0; i < lut.data.length; i++) lut.data[i] = (rand() - 0.3) * 10 ** -Math.floor(rand() * 8)
+    const back = parseCube(writeCube(lut, { precision: 'exact' }))
+    expect(back.data).toEqual(lut.data)
+  })
+})
+
 describe('muestreo de LUT en CPU', () => {
   it.each(['trilinear', 'tetrahedral'] as const)('un LUT identidad deja la imagen idéntica (%s)', (interp) => {
     const rand = rng(7)

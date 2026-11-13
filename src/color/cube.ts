@@ -122,13 +122,27 @@ export function parseCube(text: string): Lut {
 export interface WriteCubeOptions {
   title?: string
   comments?: string[]
-  /** cantidad de decimales (por defecto 6) */
-  precision?: number
+  /**
+   * cantidad de decimales (por defecto 6, lo estándar para DaVinci), o 'exact': la representación más
+   * corta que vuelve exactamente al mismo float32 (para guardar LUTs dentro de un proyecto)
+   */
+  precision?: number | 'exact'
 }
 
 const fmtNum = (x: number) => (Number.isInteger(x) ? String(x) : String(Number(x.toPrecision(9))))
 
-function fix(x: number, precision: number): string {
+/** Representación decimal más corta que, leída como float32, da exactamente `x`. */
+function shortestF32(x: number): string {
+  const f = Math.fround(x)
+  for (let p = 1; p <= 9; p++) {
+    const s = f.toPrecision(p)
+    if (Math.fround(Number(s)) === f) return String(Number(s))
+  }
+  return String(f)
+}
+
+function fix(x: number, precision: number | 'exact'): string {
+  if (precision === 'exact') return Object.is(x, -0) || x === 0 ? '0' : shortestF32(x)
   const s = x.toFixed(precision)
   // evitar "-0.000000"
   return Number(s) === 0 ? (0).toFixed(precision) : s

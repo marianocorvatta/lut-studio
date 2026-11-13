@@ -44,7 +44,7 @@ alcanza con reemplazar ese archivo.
 - [x] **Fase 2** — Horneado del LUT en GPU, referencia en CPU, tests CPU vs GPU, exportación.
 - [x] **Fase 3** — Conversión Apple Log 2 → Rec.709 (por `.cube` y por fórmula) y etapa de entrada.
 - [x] **Fase 4** — Herramientas creativas.
-- [ ] Fase 5 — Scopes, guardado de proyecto, undo/redo.
+- [x] **Fase 5** — Scopes, comparación, guardado de proyecto, undo/redo.
 - [ ] Fase 6 — Chart de prueba y validación contra DaVinci.
 
 ## El preview es el LUT
@@ -140,6 +140,30 @@ Para que la GPU (float32) coincida con la referencia en CPU:
 Medido en un Apple M1 (Chrome, ANGLE Metal), canvas de 1060×834, con un grade que activa todas las etapas:
 preparar + hornear + aplicar al preview tarda **~2 ms con N = 33** y ~2.4 ms con N = 65.
 
+## Scopes
+
+Waveform (luma), parade RGB, vectorscopio e histograma, calculados en GPU: cada píxel se dibuja como un punto y
+se acumula con suma aditiva en una textura float (float32 si la GPU tiene `EXT_float_blend`; si no, float16).
+Se calculan sobre la **imagen completa** (reducida a 960 px de ancho como máximo), no sobre la vista: no dependen
+del zoom ni del paneo. Muestran los valores de salida (lo que va al `.cube`), sin la transformación de visualización.
+El vectorscopio marca las primarias y secundarias Rec.709 al 75 % y la línea de tono de piel.
+
+## Comparación
+
+Cortina arrastrable (`S`) y vista del original (`B`), en Estudio y en "Probar .cube".
+
+## Proyecto, deshacer y restablecer
+
+- **Guardar / abrir proyecto** (`⌘S`, `⇧⌘O`, o soltando el `.json`): guarda todos los parámetros, el tamaño
+  del LUT, la interpolación y las referencias a los LUTs (nombre + huella de los datos). Con "Incluir LUTs" los
+  `.cube` van dentro del archivo con precisión exacta de float32. Si no van incluidos, al abrir el proyecto la app
+  pide cargarlos y avisa si el que cargás no es el mismo (huella distinta).
+- **Deshacer / rehacer** (`⌘Z`, `⇧⌘Z` o `Ctrl+Y`): un paso por gesto (soltar un deslizador, una rueda o un
+  punto de curva). Los cambios discretos (interruptores, menús) se registran solos después de una pausa breve.
+  Los LUTs cargados no forman parte del historial.
+- **Restablecer**: cada control tiene su botón ↺ (o doble clic), cada sección el suyo, y "Restablecer todo" vuelve
+  todo a neutro (se puede deshacer).
+
 ## Modo "Probar .cube"
 
 1. Abrí una imagen (botón, tecla `O`, o soltándola sobre la ventana).
@@ -149,7 +173,9 @@ preparar + hornear + aplicar al preview tarda **~2 ms con N = 33** y ~2.4 ms con
 4. El picker (barra inferior) muestra los valores de entrada y de salida del píxel en float y en código de 10 bits.
    La salida se calcula con la referencia en CPU.
 
-Atajos: `O` abrir · `S` cortina · `B` antes · `F` ajustar · `1` 100 % · `T` interpolación · rueda: zoom · arrastrar: mover.
+Atajos: `O` abrir imagen · `S` cortina · `B` antes · `F` ajustar · `1` 100 % · `T` interpolación ·
+`⌘Z` deshacer · `⇧⌘Z` rehacer · `⌘S` guardar proyecto · `⇧⌘O` abrir proyecto · `⌘E` exportar `.cube` ·
+rueda: zoom · arrastrar: mover. En Windows/Linux, `Ctrl` en lugar de `⌘`.
 
 ## Formato .cube
 

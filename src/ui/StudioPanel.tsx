@@ -3,7 +3,7 @@ import { APPLE_WIDE_GAMUT } from '../color/appleLog2.constants'
 import type { Lut } from '../color/lut'
 import { defaultParams, type LutSize } from '../color/params'
 import { bakeCpu, compareLuts, CONV_OFF, prepare, type Prepared } from '../color/pipeline'
-import { exportCube, pickCube } from './actions'
+import { exportCube, openProject, pickSlotLut, saveProject } from './actions'
 import { LutSlot, Section, Slider, Toggle } from './controls'
 import { GradePanel } from './GradePanel'
 import { useApp } from './store'
@@ -16,6 +16,10 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
   const conversionLut = useApp((s) => s.conversionLut)
   const creativeLut = useApp((s) => s.creativeLut)
   const lutSize = useApp((s) => s.lutSize)
+  const missing = useApp((s) => s.missingLuts)
+  const embedLuts = useApp((s) => s.embedLuts)
+  const canUndo = useApp((s) => s.history.past.length > 0 || JSON.stringify(s.history.committed) !== JSON.stringify(s.params))
+  const canRedo = useApp((s) => s.history.future.length > 0)
   const interpolation = useApp((s) => s.interpolation)
   const def = defaultParams()
   const inputDisabled = prepared.convMode === CONV_OFF
@@ -32,6 +36,32 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
 
   return (
     <div className="panel">
+      <div className="toolbar">
+        <button onClick={() => useApp.getState().undo()} disabled={!canUndo} title="Deshacer (⌘Z / Ctrl+Z)">
+          ↶ Deshacer
+        </button>
+        <button onClick={() => useApp.getState().redo()} disabled={!canRedo} title="Rehacer (⇧⌘Z / Ctrl+Y)">
+          ↷ Rehacer
+        </button>
+        <button onClick={() => useApp.getState().resetParams()} title="Vuelve todos los controles a neutro (se puede deshacer)">
+          Restablecer todo
+        </button>
+      </div>
+      <div className="toolbar">
+        <button onClick={() => void openProject()} title="Abrir proyecto .json">
+          Abrir proyecto…
+        </button>
+        <button onClick={saveProject} title="Guardar proyecto (⌘S / Ctrl+S)">
+          Guardar proyecto…
+        </button>
+        <Toggle label="Incluir LUTs" checked={embedLuts} onChange={(v) => useApp.getState().setEmbedLuts(v)} title="Guarda los .cube dentro del proyecto: el archivo queda autocontenido" />
+      </div>
+      {(missing.conversion || missing.creative) && (
+        <p className="issue">
+          El proyecto usa {[missing.conversion?.name, missing.creative?.name].filter(Boolean).join(' y ')}.{' '}
+          {missing.conversion && missing.creative ? 'Cargalos' : 'Cargalo'} en su lugar para que el look se vea igual.
+        </p>
+      )}
       {prepared.issues.map((t) => (
         <p key={t} className="issue">
           {t}
@@ -111,7 +141,7 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
               label="LUT de conversión"
               name={conversionLut?.name ?? null}
               meta={conversionLut ? lutMeta(conversionLut.lut) : undefined}
-              onLoad={() => void pickCube().then((l) => l && useApp.getState().setConversionLut(l))}
+              onLoad={() => void pickSlotLut('conversion')}
               onClear={() => useApp.getState().setConversionLut(null)}
             />
             <p className="hint">
@@ -154,7 +184,7 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
           label="LUT creativo"
           name={creativeLut?.name ?? null}
           meta={creativeLut ? lutMeta(creativeLut.lut) : undefined}
-          onLoad={() => void pickCube().then((l) => l && useApp.getState().setCreativeLut(l))}
+          onLoad={() => void pickSlotLut('creative')}
           onClear={() => useApp.getState().setCreativeLut(null)}
         />
         <Toggle label="Activo" checked={params.creativeLut.enabled} onChange={(v) => update((p) => void (p.creativeLut.enabled = v))} />

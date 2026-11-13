@@ -299,7 +299,7 @@ kbd {
 .notices {
   position: absolute;
   left: 12px;
-  bottom: 38px;
+  top: 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -660,4 +660,63 @@ button.primary:hover:not(:disabled) {
 }
 .curve__pt--on {
   fill: #e0e0e0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.toolbar button {
+  padding: 3px 8px;
+}
+
+.scopes {
+  flex: none;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.scopes__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 10px;
+}
+.scopes__note {
+  color: var(--dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scopes__body {
+  height: 210px;
+  padding: 0 10px 8px;
+  display: flex;
+  justify-content: center;
+}
+.scopes__canvas {
+  height: 100%;
+  max-width: 100%;
+  background: #141414;
+  border: 1px solid var(--line);
+  image-rendering: auto;
+}
+.scopes__canvas--waveform,
+.scopes__canvas--parade {
+  aspect-ratio: 2 / 1;
+  width: auto;
+}
+.scopes__canvas--parade {
+  aspect-ratio: 3 / 1;
+}
+.scopes__canvas--vectorscope {
+  aspect-ratio: 1;
+}
+.scopes__canvas--histogram {
+  aspect-ratio: 512 / 200;
 }

@@ -6,7 +6,10 @@ import { Renderer, type RenderLayer } from '../gpu/renderer'
 import { useApp } from './store'
 
 /** Renderer activo, para acciones fuera del componente (exportar, scopes). */
-export const viewerApi: { renderer: Renderer | null } = { renderer: null }
+export const viewerApi: { renderer: Renderer | null; listeners: Set<(r: Renderer) => void> } = {
+  renderer: null,
+  listeners: new Set(),
+}
 
 export interface ViewerProps {
   /** pila de LUTs a aplicar sobre la imagen (modo Probar .cube) */
@@ -59,6 +62,7 @@ export function Viewer({ layers, computeOutput, bake, onRendered }: ViewerProps)
       r.render()
       setZoom(r.view.scale / (window.devicePixelRatio || 1))
       onRenderedRef.current?.(r)
+      for (const l of viewerApi.listeners) l(r)
     })
   }, [])
 
