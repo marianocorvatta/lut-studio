@@ -49,6 +49,36 @@ describe('horneado en GPU vs referencia en CPU', () => {
     }
   })
 
+  it.each<[string, number, number, number]>([
+    ['neutra', 0, 6500, 0],
+    ['exposición +1.5', 1.5, 6500, 0],
+    ['exposición -2 y balance de blancos', -2, 3400, 35],
+    ['balance frío con tinte verde', 0.3, 11000, -60],
+  ])('conversión por fórmula, etapa de entrada %s', (_name, exposure, temperature, tint) => {
+    const params = defaultParams()
+    params.conversion.source = 'formula'
+    params.input = { exposure, temperature, tint }
+    for (const clamp of [true, false]) {
+      params.output.clamp = clamp
+      const p = prepare(params, { conversionLut: null, creativeLut: null }, 'tetrahedral')
+      for (const n of [33, 65]) {
+        baker.bake(p, n)
+        expect(diff(baker.read().data, bakeCpu(p, n).data).max).toBeLessThan(TOL)
+      }
+    }
+  })
+
+  it('etapa de entrada sobre la señal log + conversión con .cube', () => {
+    const params = defaultParams()
+    params.input = { exposure: 0.75, temperature: 4800, tint: -20 }
+    for (const interp of ['trilinear', 'tetrahedral'] as const) {
+      const p = prepare(params, { conversionLut: wavyLut(33, 21, 0.05), creativeLut: null }, interp)
+      expect(p.inputOn).toBe(true)
+      baker.bake(p, 33)
+      expect(diff(baker.read().data, bakeCpu(p, 33).data).max).toBeLessThan(TOL)
+    }
+  })
+
   it('LUT 1D como conversión', () => {
     const lut1: Lut1D = { kind: '1D', size: 64, data: new Float32Array(64 * 3), domainMin: [0, 0, 0], domainMax: [1, 1, 1] }
     for (let i = 0; i < 64; i++) {

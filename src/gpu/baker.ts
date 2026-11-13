@@ -6,7 +6,9 @@
  * El shader replica operación por operación a color/pipeline.ts (referencia en CPU).
  */
 import type { Lut, Lut3D } from '../color/lut'
-import { CONV_LUT, type Prepared } from '../color/pipeline'
+import { APPLE_LOG_PT, TONE } from '../color/appleLog'
+import { APPLE_LOG_CURVE as K } from '../color/appleLog2.constants'
+import { CONV_FORMULA, CONV_LUT, type Prepared } from '../color/pipeline'
 import { createTarget, createTexture, disposeTarget, drawTo, Program, readTarget, type GL, type Target } from './gl'
 import { LutCache, type GpuLut } from './lutCache'
 import { LUT_GLSL } from './lutGlsl'
@@ -24,6 +26,10 @@ uniform int uConvKind;
 uniform vec3 uConvMin;
 uniform vec3 uConvMax;
 
+uniform int uInputOn;
+uniform mat3 uInputMatrix;
+uniform mat3 uFormulaMatrix;
+
 uniform int uCreativeOn;
 uniform sampler2D uCreativeLut;
 uniform int uCreativeSize;
@@ -35,12 +41,48 @@ uniform float uCreativeMix;
 uniform int uClamp;
 out vec4 o;
 ${LUT_GLSL}
+// --- Apple Log (constantes de color/appleLog2.constants.ts) ---
+const float AL_R0 = ${K.R0};
+const float AL_RT = ${K.Rt};
+const float AL_C = ${K.c};
+const float AL_BETA = ${K.beta};
+const float AL_GAMMA = ${K.gamma};
+const float AL_DELTA = ${K.delta};
+const float AL_PT = ${APPLE_LOG_PT};
+
+float appleLogDecode1(float p) {
+  if (p >= AL_PT) return exp2((p - AL_DELTA) / AL_GAMMA) - AL_BETA;
+  if (p >= 0.0) return sqrt(p / AL_C) + AL_R0;
+  return AL_R0;
+}
+vec3 appleLogDecode(vec3 p) { return vec3(appleLogDecode1(p.r), appleLogDecode1(p.g), appleLogDecode1(p.b)); }
+
+float appleLogEncode1(float r) {
+  if (r >= AL_RT) return AL_GAMMA * log2(r + AL_BETA) + AL_DELTA;
+  if (r >= AL_R0) { float d = r - AL_R0; return AL_C * d * d; }
+  return 0.0;
+}
+vec3 appleLogEncode(vec3 r) { return vec3(appleLogEncode1(r.r), appleLogEncode1(r.g), appleLogEncode1(r.b)); }
+
+// tone mapping de la conversión por fórmula (Naka-Rushton por canal) + gamma 2.4
+vec3 formulaToneMap(vec3 l) {
+  vec3 ln = pow(max(l, 0.0), vec3(${TONE.n}));
+  return pow(${TONE.s} * ln / (ln + ${TONE.kn}), vec3(${TONE.invGamma}));
+}
+
 void main() {
   ivec2 p = ivec2(gl_FragCoord.xy);
   vec3 c = vec3(float(p.x % uN), float(p.x / uN), float(p.y)) / float(uN - 1);
 
-  // 2. Conversión Apple Log 2 -> Rec.709
-  if (uConvMode == ${CONV_LUT}) c = applyLut(uConvLut, uConvSize, uConvKind, uInterp, uConvMin, uConvMax, c);
+  if (uConvMode == ${CONV_FORMULA}) {
+    // 1 + 2. Entrada y conversión por fórmula
+    c = formulaToneMap(uFormulaMatrix * appleLogDecode(c));
+  } else if (uConvMode == ${CONV_LUT}) {
+    // 1. Etapa de entrada sobre la señal log
+    if (uInputOn == 1) c = appleLogEncode(uInputMatrix * appleLogDecode(c));
+    // 2. Conversión Apple Log 2 -> Rec.709 con el .cube cargado
+    c = applyLut(uConvLut, uConvSize, uConvKind, uInterp, uConvMin, uConvMax, c);
+  }
 
   // 3. Etapa creativa: LUT creativo con intensidad
   if (uCreativeOn == 1) {
@@ -89,6 +131,7 @@ export class Baker {
     prog.i('uN', size).i('uInterp', p.interp === 'trilinear' ? 0 : 1).i('uClamp', p.clamp ? 1 : 0)
 
     prog.i('uConvMode', p.convMode)
+    prog.i('uInputOn', p.inputOn ? 1 : 0).m3('uInputMatrix', p.inputMatrix).m3('uFormulaMatrix', p.formulaMatrix)
     this.bindLut('uConv', 0, p.convLut)
 
     prog.i('uCreativeOn', p.creativeLut ? 1 : 0).f('uCreativeMix', p.creativeMix)

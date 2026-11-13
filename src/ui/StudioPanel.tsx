@@ -1,6 +1,8 @@
+import { useMemo } from 'react'
+import { APPLE_WIDE_GAMUT } from '../color/appleLog2.constants'
 import type { Lut } from '../color/lut'
 import { defaultParams, type LutSize } from '../color/params'
-import type { Prepared } from '../color/pipeline'
+import { bakeCpu, compareLuts, CONV_OFF, prepare, type Prepared } from '../color/pipeline'
 import { exportCube, pickCube } from './actions'
 import { LutSlot, Section, Slider, Toggle } from './controls'
 import { useApp } from './store'
@@ -13,7 +15,19 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
   const conversionLut = useApp((s) => s.conversionLut)
   const creativeLut = useApp((s) => s.creativeLut)
   const lutSize = useApp((s) => s.lutSize)
+  const interpolation = useApp((s) => s.interpolation)
   const def = defaultParams()
+  const inputDisabled = prepared.convMode === CONV_OFF
+
+  // Validación de la fórmula contra el .cube de conversión cargado (por ejemplo, el oficial de Apple)
+  const formulaVsLut = useMemo(() => {
+    if (params.conversion.source !== 'formula' || !conversionLut) return null
+    const p = defaultParams()
+    p.conversion.source = 'formula'
+    p.output.clamp = true
+    const baked = bakeCpu(prepare(p, { conversionLut: null, creativeLut: null }, interpolation), 33)
+    return compareLuts(baked, conversionLut.lut, interpolation)
+  }, [params.conversion.source, conversionLut, interpolation])
 
   return (
     <div className="panel">
@@ -22,6 +36,56 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
           {t}
         </p>
       ))}
+
+      <Section title="Entrada (señal log)" onReset={() => update((p) => void (p.input = def.input))}>
+        <Slider
+          label="Exposición"
+          value={params.input.exposure}
+          min={-4}
+          max={4}
+          step={0.01}
+          def={0}
+          disabled={inputDisabled}
+          format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} st`}
+          onChange={(v) => update((p) => void (p.input.exposure = v))}
+          title="Decodifica Apple Log 2 a lineal, multiplica por 2^stops y vuelve a codificar"
+        />
+        <Slider
+          label="Temperatura"
+          value={params.input.temperature}
+          min={2500}
+          max={12000}
+          step={10}
+          def={6500}
+          disabled={inputDisabled}
+          format={(v) => `${v.toFixed(0)} K`}
+          onChange={(v) => update((p) => void (p.input.temperature = v))}
+          title="Adaptación cromática Bradford en lineal, en Apple Wide Gamut. Subir = más cálido."
+        />
+        <Slider
+          label="Tinte"
+          value={params.input.tint}
+          min={-100}
+          max={100}
+          step={1}
+          def={0}
+          disabled={inputDisabled}
+          format={(v) => v.toFixed(0)}
+          onChange={(v) => update((p) => void (p.input.tint = v))}
+          title="+ magenta, − verde"
+        />
+        <p className="hint">
+          {inputDisabled
+            ? 'La etapa de entrada trabaja sobre la señal Apple Log 2: activá la conversión para usarla.'
+            : 'Se aplica antes de la conversión, en lineal de escena, sobre el gamut nativo de Apple Log 2.'}
+        </p>
+        {!inputDisabled && !APPLE_WIDE_GAMUT.verified && (params.input.temperature !== 6500 || params.input.tint !== 0) && (
+          <p className="hint hint--strong">
+            El balance de blancos usa los primarios de Apple Wide Gamut, que todavía no están verificados contra el white
+            paper (ver src/color/appleLog2.constants.ts).
+          </p>
+        )}
+      </Section>
 
       <Section title="Conversión Apple Log 2 → Rec.709" onReset={() => update((p) => void (p.conversion = def.conversion))}>
         <Toggle
@@ -53,6 +117,31 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
               Usá el LUT oficial de Apple (AppleLog2ToRec709) u otro de tu elección. Si su tamaño coincide con el del LUT
               exportado, los nodos caen exactos y no se agrega error de interpolación.
             </p>
+          </>
+        )}
+        {params.conversion.source === 'formula' && (
+          <>
+            <p className="hint">
+              Curva de transferencia del white paper de Apple + matriz Apple Wide Gamut → Rec.709 + tone mapping propio
+              (Naka-Rushton por canal) + gamma 2.4. No reproduce el LUT oficial: para eso usá la fuente ".cube".
+            </p>
+            {!APPLE_WIDE_GAMUT.verified && (
+              <p className="hint hint--strong">
+                Atención: los primarios de Apple Wide Gamut vienen de fuentes secundarias y no se verificaron contra el
+                white paper. Confirmalos en src/color/appleLog2.constants.ts antes de confiar en esta fuente.
+              </p>
+            )}
+            {formulaVsLut ? (
+              <p className="stat">
+                Fórmula vs <b>{conversionLut?.name}</b> (33³, salida 0–1):
+                <br />
+                error máximo <b>{formulaVsLut.max.toFixed(4)}</b> · promedio <b>{formulaVsLut.mean.toFixed(4)}</b>
+              </p>
+            ) : (
+              <p className="hint">
+                Cargá el LUT oficial en la fuente ".cube" y volvé a "Fórmula" para ver acá el error máximo y promedio entre ambos.
+              </p>
+            )}
           </>
         )}
       </Section>

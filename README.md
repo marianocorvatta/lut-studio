@@ -42,7 +42,7 @@ alcanza con reemplazar ese archivo.
 
 - [x] **Fase 1** — Setup, carga de imagen en float, viewer WebGL2, parser/writer de `.cube` con tests, modo "Probar .cube".
 - [x] **Fase 2** — Horneado del LUT en GPU, referencia en CPU, tests CPU vs GPU, exportación.
-- [ ] Fase 3 — Conversión Apple Log 2 → Rec.709.
+- [x] **Fase 3** — Conversión Apple Log 2 → Rec.709 (por `.cube` y por fórmula) y etapa de entrada.
 - [ ] Fase 4 — Herramientas creativas.
 - [ ] Fase 5 — Scopes, guardado de proyecto, undo/redo.
 - [ ] Fase 6 — Chart de prueba y validación contra DaVinci.
@@ -63,6 +63,41 @@ El picker también usa el LUT horneado leído de la GPU.
 imagen procesada en GPU coincide con el LUT horneado aplicado en CPU.
 
 La primera vez hay que instalar el navegador de pruebas: `npx playwright install chromium`.
+
+## Conversión Apple Log 2 → Rec.709
+
+Tiene un interruptor (apagada, la imagen pasa tal cual: sirve para material que no es log) y dos fuentes:
+
+- **`.cube` de conversión (por defecto).** Cargá el LUT oficial de Apple (`AppleLog2ToRec709`) u otro. Con el LUT
+  oficial de 33³ y exportando a 33³ sin correcciones, el `.cube` exportado coincide con el original salvo el
+  redondeo a 6 decimales (diferencia máxima medida: 5.3e-7).
+- **Fórmula.** Curva de transferencia del white paper de Apple → matriz Apple Wide Gamut → Rec.709 →
+  tone mapping propio (Naka-Rushton por canal) → gamma 2.4.
+
+### Estado de las constantes (`src/color/appleLog2.constants.ts`)
+
+| Constante | Estado | Fuente |
+|---|---|---|
+| Curva de transferencia (R0, Rt, c, β, γ, δ) | Verificada | White paper de Apple, vía colour-science |
+| Primarios de Apple Wide Gamut | **Sin verificar contra el PDF** | Fuentes secundarias coincidentes (gamut.io, Resolve 20.2, colour-science #1428) |
+| Tone mapping de la fórmula | Elección propia | El white paper no define un tone mapping a Rec.709 |
+
+Si tenés el white paper, confirmá los primarios en ese archivo y poné `verified: true`; la app deja de mostrar el aviso.
+
+### Validación de la fórmula contra el LUT oficial
+
+Medido con `AppleLog2ToRec709-v1.0-33.cube` (33³, salida 0–1): **error máximo 0.6809, promedio 0.0476**.
+El error grande está en los colores muy saturados: el LUT de Apple hace un mapeo de gamut que la fórmula no intenta
+reproducir (la fórmula recorta por canal). La app muestra estos dos números en el panel cuando hay un LUT de
+conversión cargado y la fuente es "Fórmula". Para trabajo real, usá la fuente `.cube`.
+
+## Etapa de entrada (sobre la señal log)
+
+- **Exposición** en stops: decodifica Apple Log 2 a lineal, multiplica por 2^stops y vuelve a codificar.
+- **Balance de blancos** (temperatura y tinte): adaptación cromática Bradford en lineal, en Apple Wide Gamut.
+  Depende de los primarios, así que hereda su estado "sin verificar".
+- Funciona con las dos fuentes de conversión. Con la conversión apagada no hay señal log y queda deshabilitada.
+- En los valores por defecto es exactamente la identidad (no se decodifica ni recodifica nada).
 
 ## Modo "Probar .cube"
 

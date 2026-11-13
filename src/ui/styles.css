@@ -539,3 +539,19 @@ button.primary {
 button.primary:hover:not(:disabled) {
   background: #787878;
 }
+
+.hint--strong {
+  color: var(--strong);
+  border-left: 2px solid #9a9a9a;
+  padding-left: 8px;
+}
+.stat {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-variant-numeric: tabular-nums;
+}
+.stat b {
+  color: var(--strong);
+}
