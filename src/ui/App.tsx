@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { applyLutStack, type RGB } from '../color/lut'
+import { prepare } from '../color/pipeline'
 import type { RenderLayer } from '../gpu/renderer'
 import { readFile } from '../io/platform'
 import { handleDroppedFiles, openImage } from './actions'
 import { useApp, type AppMode } from './store'
+import { StudioPanel } from './StudioPanel'
 import { TestPanel } from './TestPanel'
 import { Viewer } from './Viewer'
 
 const MODES: { id: AppMode; label: string; ready: boolean }[] = [
-  { id: 'studio', label: 'Estudio', ready: false },
+  { id: 'studio', label: 'Estudio', ready: true },
   { id: 'test', label: 'Probar .cube', ready: true },
   { id: 'validate', label: 'Validar con DaVinci', ready: false },
 ]
@@ -30,6 +32,16 @@ export function App() {
   const notices = useApp((s) => s.notices)
   const gpuError = useApp((s) => s.gpuError)
   const busy = useApp((s) => s.busy)
+  const params = useApp((s) => s.params)
+  const conversionLut = useApp((s) => s.conversionLut)
+  const creativeLut = useApp((s) => s.creativeLut)
+  const lutSize = useApp((s) => s.lutSize)
+
+  const prepared = useMemo(
+    () => prepare(params, { conversionLut: conversionLut?.lut ?? null, creativeLut: creativeLut?.lut ?? null }, interpolation),
+    [params, conversionLut, creativeLut, interpolation],
+  )
+  const bake = useMemo(() => ({ prepared, size: lutSize }), [prepared, lutSize])
 
   const layers: RenderLayer[] = useMemo(
     () => testLayers.filter((l) => l.enabled && l.opacity > 0).map((l) => ({ lut: l.lut, opacity: l.opacity })),
@@ -163,7 +175,7 @@ export function App() {
 
       <main className="main">
         <div className="stage">
-          <Viewer layers={layers} computeOutput={computeOutput} />
+          {mode === 'studio' ? <Viewer bake={bake} /> : <Viewer layers={layers} computeOutput={computeOutput} />}
           {busy && <div className="busy">{busy}</div>}
           <div className="notices">
             {notices.map((n) => (
@@ -178,6 +190,7 @@ export function App() {
           </div>
         </div>
         <aside className="side">
+          {mode === 'studio' && <StudioPanel prepared={prepared} />}
           {mode === 'test' && <TestPanel />}
           <footer className="side__foot">
             <p>

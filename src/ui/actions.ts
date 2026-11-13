@@ -1,8 +1,9 @@
-import { parseCube } from '../color/cube'
+import { parseCube, writeCube } from '../color/cube'
 import type { Lut } from '../color/lut'
 import { decodeImage } from '../io/image'
-import { CUBE_ACCEPT, decodeText, IMAGE_ACCEPT, pickFiles, type PickedFile } from '../io/platform'
+import { CUBE_ACCEPT, decodeText, IMAGE_ACCEPT, pickFiles, saveFile, type PickedFile } from '../io/platform'
 import { useApp } from './store'
+import { viewerApi } from './Viewer'
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -55,9 +56,40 @@ export async function handleDroppedFiles(files: PickedFile[]): Promise<void> {
   const images = files.filter((f) => /\.(tiff?|png|jpe?g)$/i.test(f.name))
   if (images[0]) await loadImageFile(images[0])
   if (cubes.length) {
-    useApp.getState().setMode('test')
-    await addTestCubes(cubes)
+    const app = useApp.getState()
+    if (app.mode === 'studio') {
+      // en Estudio, el primer .cube soltado ocupa el lugar libre: conversión y después creativo
+      const lut = parseCubeFile(cubes[0])
+      if (lut) {
+        if (!app.conversionLut) app.setConversionLut({ name: cubes[0].name, lut })
+        else app.setCreativeLut({ name: cubes[0].name, lut })
+      }
+    } else {
+      app.setMode('test')
+      await addTestCubes(cubes)
+    }
   }
   if (!cubes.length && !images.length && files.length)
     useApp.getState().notify('warn', 'Archivo no reconocido. Se aceptan TIFF, PNG, JPEG y .cube.')
+}
+
+/** Exporta el LUT horneado: se lee de la GPU la misma textura float que usa el preview. */
+export function exportCube(): void {
+  const app = useApp.getState()
+  const r = viewerApi.renderer
+  if (!r) return
+  try {
+    const lut = r.readBaked()
+    const base = (app.image?.name ?? 'look').replace(/\.[^.]+$/, '')
+    const title = `LUT Studio - ${base}`
+    const comments = [
+      'Generado con LUT Studio',
+      `Conversion: ${app.params.conversion.enabled ? (app.params.conversion.source === 'lut' ? (app.conversionLut?.name ?? 'sin LUT') : 'formula') : 'apagada'}`,
+      `Interpolacion usada en el preview: ${app.interpolation === 'tetrahedral' ? 'tetraedrica' : 'trilineal'}`,
+    ]
+    saveFile(`${base}_${lut.size}.cube`, writeCube(lut, { title, comments }), 'text/plain')
+    app.notify('info', `Exportado ${base}_${lut.size}.cube (${lut.size}³).`)
+  } catch (e) {
+    app.notify('error', `No se pudo exportar: ${errText(e)}`)
+  }
 }

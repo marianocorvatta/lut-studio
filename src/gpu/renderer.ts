@@ -6,19 +6,17 @@
  */
 import type { Interpolation, Lut } from '../color/lut'
 import type { FloatImage } from '../io/image'
-import { createGL, createTarget, createTexture, disposeTarget, drawTo, Program, type GL, type Target } from './gl'
+import type { Lut3D } from '../color/lut'
+import type { Prepared } from '../color/pipeline'
+import { Baker } from './baker'
+import { createGL, createTarget, createTexture, disposeTarget, drawTo, Program, readTarget, type GL, type Target } from './gl'
+import { LutCache, type GpuLut } from './lutCache'
 import { LUT_GLSL } from './lutGlsl'
+
+export type { GpuLut } from './lutCache'
 
 export type DisplayTransform = 'none' | 'rec709-srgb' | 'rec709-p3'
 export type CompareMode = 'off' | 'split' | 'before'
-
-export interface GpuLut {
-  tex: WebGLTexture
-  size: number
-  kind: '3D' | '1D'
-  domainMin: ArrayLike<number>
-  domainMax: ArrayLike<number>
-}
 
 export interface RenderLayer {
   lut: Lut | GpuLut
@@ -34,17 +32,6 @@ export interface View {
 }
 
 const isGpuLut = (l: Lut | GpuLut): l is GpuLut => 'tex' in l
-
-export function uploadLut(g: GL, lut: Lut): GpuLut {
-  const { gl, caps } = g
-  const n = lut.size
-  const w = lut.kind === '3D' ? n * n : n
-  const h = lut.kind === '3D' ? n : 1
-  if (w > caps.maxTextureSize)
-    throw new Error(`El LUT (${lut.kind}, tamaño ${n}) excede el tamaño máximo de textura de esta GPU (${caps.maxTextureSize}).`)
-  const tex = createTexture(gl, w, h, 'rgb32f', lut.data)
-  return { tex, size: n, kind: lut.kind, domainMin: lut.domainMin, domainMax: lut.domainMax }
-}
 
 const RESAMPLE_FS = `#version 300 es
 precision highp float;
@@ -132,7 +119,8 @@ export class Renderer {
   private before: Target | null = null
   private ping: Target | null = null
   private pong: Target | null = null
-  private lutCache = new Map<Lut, GpuLut>()
+  private lutCache: LutCache
+  private baker: Baker
   private layers: RenderLayer[] = []
   private p3Canvas = false
   /** última textura procesada (para scopes) */
@@ -152,6 +140,8 @@ export class Renderer {
     this.resample = new Program(gl, RESAMPLE_FS)
     this.lutProg = new Program(gl, LUT_FS)
     this.displayProg = new Program(gl, DISPLAY_FS)
+    this.lutCache = new LutCache(this.g)
+    this.baker = new Baker(this.g)
   }
 
   get gl(): WebGL2RenderingContext {
@@ -177,15 +167,27 @@ export class Renderer {
 
   /** Define la pila de LUTs. Las texturas de LUTs que ya no se usan se liberan. */
   setLayers(layers: RenderLayer[]): void {
-    const used = new Set<Lut>()
-    for (const l of layers) if (!isGpuLut(l.lut)) used.add(l.lut)
-    for (const [lut, gpu] of this.lutCache)
-      if (!used.has(lut)) {
-        this.gl.deleteTexture(gpu.tex)
-        this.lutCache.delete(lut)
-      }
-    for (const lut of used) if (!this.lutCache.has(lut)) this.lutCache.set(lut, uploadLut(this.g, lut))
+    const used: Lut[] = []
+    for (const l of layers) if (!isGpuLut(l.lut)) used.push(l.lut)
+    this.lutCache.retain(used)
+    for (const lut of used) this.lutCache.get(lut)
     this.layers = layers
+  }
+
+  /** Hornea el pipeline en GPU. El resultado se puede usar como capa en setLayers. */
+  bake(p: Prepared, size: number): GpuLut {
+    return this.baker.bake(p, size)
+  }
+
+  /** LUT horneado leído de la GPU (lo que se exporta). */
+  readBaked(): Lut3D {
+    return this.baker.read()
+  }
+
+  /** Lee la imagen procesada a resolución de viewport (RGBA float, fila 0 abajo). */
+  readProcessed(): { width: number; height: number; data: Float32Array } | null {
+    const t = this.processed
+    return t ? { width: t.width, height: t.height, data: readTarget(this.gl, t) } : null
   }
 
   /** Ajusta el tamaño del canvas al tamaño CSS x devicePixelRatio. Devuelve true si cambió. */
@@ -264,7 +266,6 @@ export class Renderer {
       const interp = this.interpolation === 'trilinear' ? 0 : 1
       for (const layer of this.layers) {
         const lut = isGpuLut(layer.lut) ? layer.lut : this.lutCache.get(layer.lut)
-        if (!lut) continue
         const dst = src === this.ping ? this.pong! : this.ping!
         this.lutProg
           .use()
@@ -297,8 +298,8 @@ export class Renderer {
   dispose(): void {
     const { gl } = this.g
     if (this.imgTex) gl.deleteTexture(this.imgTex)
-    for (const gpu of this.lutCache.values()) gl.deleteTexture(gpu.tex)
-    this.lutCache.clear()
+    this.lutCache.dispose()
+    this.baker.dispose()
     disposeTarget(gl, this.before)
     disposeTarget(gl, this.ping)
     disposeTarget(gl, this.pong)

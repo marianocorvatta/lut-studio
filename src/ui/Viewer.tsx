@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { RGB } from '../color/lut'
+import { sampleLut3D, type RGB } from '../color/lut'
+import type { Prepared } from '../color/pipeline'
 import { GpuUnsupportedError } from '../gpu/gl'
 import { Renderer, type RenderLayer } from '../gpu/renderer'
 import { useApp } from './store'
 
+/** Renderer activo, para acciones fuera del componente (exportar, scopes). */
+export const viewerApi: { renderer: Renderer | null } = { renderer: null }
+
 export interface ViewerProps {
-  /** pila de LUTs a aplicar sobre la imagen */
-  layers: RenderLayer[]
-  /** referencia en CPU del mismo proceso, para el picker */
-  computeOutput: (rgb: RGB) => RGB
+  /** pila de LUTs a aplicar sobre la imagen (modo Probar .cube) */
+  layers?: RenderLayer[]
+  /** referencia en CPU del mismo proceso, para el picker (modo Probar .cube) */
+  computeOutput?: (rgb: RGB) => RGB
+  /**
+   * Modo Estudio: pipeline a hornear. El preview aplica a la imagen el LUT horneado,
+   * que es exactamente el que se exporta.
+   */
+  bake?: { prepared: Prepared; size: number }
   /** se llama después de cada render (para scopes) */
   onRendered?: (r: Renderer) => void
 }
@@ -23,7 +32,7 @@ interface Pick {
 const fmt = (v: number) => (Object.is(v, -0) ? 0 : v).toFixed(4)
 const code10 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 1023)
 
-export function Viewer({ layers, computeOutput, onRendered }: ViewerProps) {
+export function Viewer({ layers, computeOutput, bake, onRendered }: ViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<Renderer | null>(null)
   const rafRef = useRef(0)
@@ -66,6 +75,7 @@ export function Viewer({ layers, computeOutput, onRendered }: ViewerProps) {
       return
     }
     rendererRef.current = r
+    viewerApi.renderer = r
     const ro = new ResizeObserver(() => requestRender())
     ro.observe(canvas)
     const onLost = (ev: Event) => {
@@ -80,6 +90,7 @@ export function Viewer({ layers, computeOutput, onRendered }: ViewerProps) {
       rafRef.current = 0
       r.dispose()
       rendererRef.current = null
+      if (viewerApi.renderer === r) viewerApi.renderer = null
     }
   }, [requestRender])
 
@@ -101,12 +112,13 @@ export function Viewer({ layers, computeOutput, onRendered }: ViewerProps) {
     const r = rendererRef.current
     if (!r) return
     try {
-      r.setLayers(layers)
+      if (bake) r.setLayers([{ lut: r.bake(bake.prepared, bake.size), opacity: 1 }])
+      else r.setLayers(layers ?? [])
     } catch (e) {
       useApp.getState().notify('error', e instanceof Error ? e.message : String(e))
     }
     requestRender()
-  }, [layers, requestRender])
+  }, [layers, bake, requestRender])
 
   useEffect(() => {
     const r = rendererRef.current
@@ -144,8 +156,14 @@ export function Viewer({ layers, computeOutput, onRendered }: ViewerProps) {
     if (x < 0 || y < 0 || x >= img.width || y >= img.height) return setPick(null)
     const o = (y * img.width + x) * 4
     const input: RGB = [img.data[o], img.data[o + 1], img.data[o + 2]]
-    setPick({ x, y, input, output: computeOutput(input) })
-  }, [computeOutput])
+    // En modo Estudio la salida es el LUT horneado (leído de la GPU) aplicado al píxel: lo mismo que hará DaVinci.
+    const output = bake
+      ? sampleLut3D(r.readBaked(), input, useApp.getState().interpolation)
+      : computeOutput
+        ? computeOutput(input)
+        : input
+    setPick({ x, y, input, output })
+  }, [computeOutput, bake, interpolation])
 
   useEffect(() => updatePick(), [updatePick, image])
 

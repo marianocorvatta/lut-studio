@@ -9,7 +9,7 @@ con el `.cube` exportado.
 ```bash
 npm install
 npm run dev        # servidor de desarrollo
-npm test           # tests (Vitest)
+npm test           # tests: proyecto "cpu" (Node) + proyecto "gpu" (Chromium headless con WebGL2)
 npm run build      # typecheck + build de producción
 ```
 
@@ -41,11 +41,28 @@ alcanza con reemplazar ese archivo.
 ## Estado por fases
 
 - [x] **Fase 1** — Setup, carga de imagen en float, viewer WebGL2, parser/writer de `.cube` con tests, modo "Probar .cube".
-- [ ] Fase 2 — Horneado del LUT en GPU, referencia en CPU, tests CPU vs GPU, exportación.
+- [x] **Fase 2** — Horneado del LUT en GPU, referencia en CPU, tests CPU vs GPU, exportación.
 - [ ] Fase 3 — Conversión Apple Log 2 → Rec.709.
 - [ ] Fase 4 — Herramientas creativas.
 - [ ] Fase 5 — Scopes, guardado de proyecto, undo/redo.
 - [ ] Fase 6 — Chart de prueba y validación contra DaVinci.
+
+## El preview es el LUT
+
+En modo Estudio, en cada cambio de parámetros:
+
+1. La GPU genera la grilla identidad N×N×N (N = 33 o 65) dentro del shader.
+2. La pasa por el pipeline completo y deja el LUT horneado en una textura `RGBA32F`.
+3. Aplica **ese** LUT a la imagen (trilineal o tetraédrica, a elección).
+
+Exportar lee esa misma textura de la GPU y escribe el `.cube`, así que lo que se ve es el archivo.
+El picker también usa el LUT horneado leído de la GPU.
+
+`src/color/pipeline.ts` es la referencia en CPU del pipeline y `src/gpu/baker.ts` es el shader equivalente.
+`src/gpu/baker.gpu.test.ts` compara ambos (tolerancia < 1e-4) en un navegador real, y verifica además que la
+imagen procesada en GPU coincide con el LUT horneado aplicado en CPU.
+
+La primera vez hay que instalar el navegador de pruebas: `npx playwright install chromium`.
 
 ## Modo "Probar .cube"
 
