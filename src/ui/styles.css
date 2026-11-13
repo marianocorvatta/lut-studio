@@ -555,3 +555,109 @@ button.primary:hover:not(:disabled) {
 .stat b {
   color: var(--strong);
 }
+
+.row--between {
+  justify-content: space-between;
+  flex-wrap: nowrap;
+}
+.wheels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.wheel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.wheel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--dim);
+}
+.wheel--changed .wheel__head span {
+  color: var(--strong);
+}
+.wheel__disc {
+  width: 100%;
+  aspect-ratio: 1;
+  cursor: crosshair;
+  touch-action: none;
+}
+.wheel__ring {
+  fill: #2a2a2a;
+  stroke: #4a4a4a;
+}
+.wheel__guide {
+  fill: none;
+  stroke: #3a3a3a;
+}
+.wheel__tick {
+  fill: var(--dim);
+  font-size: 7px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.wheel__dot {
+  fill: #d8d8d8;
+  stroke: #1b1b1b;
+  stroke-width: 1.5;
+}
+.wheel input[type='range'] {
+  width: 100%;
+}
+.wheel__values {
+  color: var(--dim);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.tabs-mini {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.tabs-mini button {
+  padding: 2px 8px;
+  font-size: 11.5px;
+}
+.tabs-mini button.on {
+  background: var(--on);
+  color: var(--strong);
+}
+.curve {
+  width: 100%;
+  height: 180px;
+  background: #222;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.curve__grid line {
+  stroke: #333;
+  vector-effect: non-scaling-stroke;
+}
+.curve__ref {
+  stroke: #444;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.curve__line {
+  fill: none;
+  stroke: #d0d0d0;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.curve__pt {
+  fill: #1b1b1b;
+  stroke: #e0e0e0;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+.curve__pt--on {
+  fill: #e0e0e0;
+}

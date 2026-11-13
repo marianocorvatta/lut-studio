@@ -55,6 +55,8 @@ interface AppState {
   /** modifica los parámetros del look con una función que muta una copia */
   updateParams: (fn: (p: LookParams) => void) => void
   resetParams: () => void
+  /** marca el fin de un cambio (punto del historial de deshacer) */
+  commit: () => void
   setConversionLut: (l: NamedLut | null) => void
   setCreativeLut: (l: NamedLut | null) => void
   setLutSize: (n: LutSize) => void
@@ -104,6 +106,7 @@ export const useApp = create<AppState>((set) => ({
       return { params }
     }),
   resetParams: () => set({ params: defaultParams() }),
+  commit: () => {},
   setConversionLut: (conversionLut) => set({ conversionLut }),
   setCreativeLut: (creativeLut) => set({ creativeLut }),
   setLutSize: (lutSize) => set({ lutSize }),

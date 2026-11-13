@@ -9,7 +9,9 @@ import type { Lut, Lut3D } from '../color/lut'
 import { APPLE_LOG_PT, TONE } from '../color/appleLog'
 import { APPLE_LOG_CURVE as K } from '../color/appleLog2.constants'
 import { CONV_FORMULA, CONV_LUT, type Prepared } from '../color/pipeline'
+import { CURVE_N } from '../color/grade'
 import { createTarget, createTexture, disposeTarget, drawTo, Program, readTarget, type GL, type Target } from './gl'
+import { GRADE_GLSL } from './gradeGlsl'
 import { LutCache, type GpuLut } from './lutCache'
 import { LUT_GLSL } from './lutGlsl'
 
@@ -41,6 +43,7 @@ uniform float uCreativeMix;
 uniform int uClamp;
 out vec4 o;
 ${LUT_GLSL}
+${GRADE_GLSL}
 // --- Apple Log (constantes de color/appleLog2.constants.ts) ---
 const float AL_R0 = ${K.R0};
 const float AL_RT = ${K.Rt};
@@ -84,7 +87,8 @@ void main() {
     c = applyLut(uConvLut, uConvSize, uConvKind, uInterp, uConvMin, uConvMax, c);
   }
 
-  // 3. Etapa creativa: LUT creativo con intensidad
+  // 3. Etapa creativa: correcciones estilo DaVinci y después el LUT creativo con intensidad
+  c = gradeStage(c);
   if (uCreativeOn == 1) {
     vec3 t = applyLut(uCreativeLut, uCreativeSize, uCreativeKind, uInterp, uCreativeMin, uCreativeMax, c);
     c += (t - c) * uCreativeMix;
@@ -100,6 +104,7 @@ export class Baker {
   private prog: Program
   private cache: LutCache
   private dummy: WebGLTexture
+  private curves: WebGLTexture
   private target: Target | null = null
   private size = 0
   private cpuCopy: Lut3D | null = null
@@ -109,6 +114,7 @@ export class Baker {
     this.prog = new Program(g.gl, BAKE_FS)
     this.cache = new LutCache(g)
     this.dummy = createTexture(g.gl, 1, 1, 'rgb32f', new Float32Array(3))
+    this.curves = createTexture(g.gl, CURVE_N, 2, 'rgba32f', null)
   }
 
   /** Hornea el pipeline. Devuelve el LUT en GPU, listo para aplicarlo a la imagen. */
@@ -127,6 +133,10 @@ export class Baker {
     // subir texturas ANTES de enlazar unidades: createTexture cambia el binding de la unidad activa
     for (const lut of used) this.cache.get(lut)
 
+    // tablas de curvas: misma Float32Array que usa la referencia en CPU
+    gl.bindTexture(gl.TEXTURE_2D, this.curves)
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, CURVE_N, 2, gl.RGBA, gl.FLOAT, p.grade.table)
+
     const prog = this.prog.use()
     prog.i('uN', size).i('uInterp', p.interp === 'trilinear' ? 0 : 1).i('uClamp', p.clamp ? 1 : 0)
 
@@ -136,6 +146,20 @@ export class Baker {
 
     prog.i('uCreativeOn', p.creativeLut ? 1 : 0).f('uCreativeMix', p.creativeMix)
     this.bindLut('uCreative', 1, p.creativeLut)
+
+    const gr = p.grade
+    prog.tex('uCurves', 2, this.curves)
+    prog.i('uLggOn', gr.lggOn ? 1 : 0).v3('uLift', gr.lift).v3('uGain', gr.gain).v3('uGammaExp', gr.gammaExp)
+    prog.i('uOffsetOn', gr.offsetOn ? 1 : 0).v3('uOffset', gr.offset)
+    prog.i('uContrastOn', gr.contrastOn ? 1 : 0).f('uContrast', gr.contrast).f('uPivot', gr.pivot)
+    prog.i('uCurvesOn', gr.curvesOn ? 1 : 0)
+    gl.uniform4i(prog.loc('uCurveMask'), ...(gr.curveMask.map(Number) as [number, number, number, number]))
+    prog.i('uOkOn', gr.okOn ? 1 : 0).f('uSaturation', gr.saturation)
+    prog.i('uTonalOn', gr.tonalOn ? 1 : 0).v3('uTonalSat', [gr.satShadows, gr.satMids, gr.satHighs])
+    gl.uniform4i(prog.loc('uHueMask'), ...(gr.hueMask.map(Number) as [number, number, number, number]))
+    prog.i('uSplitOn', gr.splitOn ? 1 : 0).f('uSplitBalance', gr.splitBalance)
+    gl.uniform2f(prog.loc('uSplitShadow'), gr.splitShadow[0], gr.splitShadow[1])
+    gl.uniform2f(prog.loc('uSplitHigh'), gr.splitHigh[0], gr.splitHigh[1])
 
     drawTo(gl, this.target)
     this.cpuCopy = null
@@ -174,6 +198,7 @@ export class Baker {
     const { gl } = this.g
     disposeTarget(gl, this.target)
     gl.deleteTexture(this.dummy)
+    gl.deleteTexture(this.curves)
     this.cache.dispose()
     this.prog.dispose()
   }

@@ -5,6 +5,7 @@ import { defaultParams, type LutSize } from '../color/params'
 import { bakeCpu, compareLuts, CONV_OFF, prepare, type Prepared } from '../color/pipeline'
 import { exportCube, pickCube } from './actions'
 import { LutSlot, Section, Slider, Toggle } from './controls'
+import { GradePanel } from './GradePanel'
 import { useApp } from './store'
 
 const lutMeta = (l: Lut) => `${l.kind} · ${l.kind === '3D' ? `${l.size}³` : l.size}${l.title ? ` · ${l.title}` : ''}`
@@ -145,6 +146,8 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
           </>
         )}
       </Section>
+
+      <GradePanel />
 
       <Section title="LUT creativo" onReset={() => update((p) => void (p.creativeLut = def.creativeLut))}>
         <LutSlot

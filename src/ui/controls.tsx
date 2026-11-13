@@ -42,6 +42,7 @@ export function Slider({
   format,
   disabled,
   title,
+  onCommit,
 }: {
   label: string
   value: number
@@ -54,6 +55,8 @@ export function Slider({
   format?: (v: number) => string
   disabled?: boolean
   title?: string
+  /** se llama al terminar un cambio (soltar, tecla, restablecer): punto del historial de deshacer */
+  onCommit?: () => void
 }) {
   const text = format ? format(value) : value.toFixed(step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3)
   return (
@@ -67,10 +70,19 @@ export function Slider({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        onDoubleClick={() => onChange(def)}
+        onPointerUp={() => onCommit?.()}
+        onKeyUp={() => onCommit?.()}
+        onDoubleClick={() => {
+          onChange(def)
+          onCommit?.()
+        }}
       />
       <output>{text}</output>
-      <button className="icon slider__reset" title="Restablecer" disabled={disabled || value === def} onClick={(e) => (e.preventDefault(), onChange(def))}>
+      <button className="icon slider__reset" title="Restablecer" disabled={disabled || value === def} onClick={(e) => {
+          e.preventDefault()
+          onChange(def)
+          onCommit?.()
+        }}>
         ↺
       </button>
     </label>

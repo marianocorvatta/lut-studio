@@ -43,7 +43,7 @@ alcanza con reemplazar ese archivo.
 - [x] **Fase 1** — Setup, carga de imagen en float, viewer WebGL2, parser/writer de `.cube` con tests, modo "Probar .cube".
 - [x] **Fase 2** — Horneado del LUT en GPU, referencia en CPU, tests CPU vs GPU, exportación.
 - [x] **Fase 3** — Conversión Apple Log 2 → Rec.709 (por `.cube` y por fórmula) y etapa de entrada.
-- [ ] Fase 4 — Herramientas creativas.
+- [x] **Fase 4** — Herramientas creativas.
 - [ ] Fase 5 — Scopes, guardado de proyecto, undo/redo.
 - [ ] Fase 6 — Chart de prueba y validación contra DaVinci.
 
@@ -98,6 +98,47 @@ conversión cargado y la fuente es "Fórmula". Para trabajo real, usá la fuente
   Depende de los primarios, así que hereda su estado "sin verificar".
 - Funciona con las dos fuentes de conversión. Con la conversión apagada no hay señal log y queda deshabilitada.
 - En los valores por defecto es exactamente la identidad (no se decodifica ni recodifica nada).
+
+## Etapa creativa (sobre Rec.709 γ2.4)
+
+Orden: Lift/Gamma/Gain → Offset → Contraste con pivote → Curvas RGB → etapa Oklab → LUT creativo.
+
+- **Lift / Gamma / Gain / Offset**: ruedas de color (Cb/Cr, sin cambio de luma Rec.709) + maestro.
+  `y = gain · (x + lift · (1 − x))`, después `y^(2^−gamma)`, después `+ offset`.
+- **Contraste** con pivote: `(x − pivote) · contraste + pivote`.
+- **Curvas** RGB maestra y por canal: splines cúbicas monótonas (Fritsch-Carlson), sin overshoot,
+  con extrapolación lineal fuera de [0, 1] (no recortan).
+- **Etapa Oklab** (OkLCh): saturación global y por rango tonal, curvas Tono vs Tono, Tono vs Sat, Tono vs Lum,
+  Lum vs Sat, y split toning.
+- **LUT creativo** opcional con intensidad 0–100 %.
+
+Cada paso se saltea si está en neutro, así un look neutro es la identidad exacta.
+
+### Detalles numéricos de la etapa Oklab
+
+Para que la GPU (float32) coincida con la referencia en CPU:
+
+- El color se modifica escalando y rotando (a, b) directamente, sin reconstruir desde coordenadas polares.
+  El tono solo se usa para leer las curvas.
+- La GPU usa `atan2`, seno y coseno propios (series), porque los de la GPU son imprecisos.
+- El par gamma 2.4 interno de esta etapa tiene un tramo lineal para |lineal| < 1e-3 (código ≈ 0.056), como el
+  toe de sRGB. Sin él, `x^(1/2.4)` tiene pendiente infinita en 0 y el redondeo de float32 se amplifica sin
+  límite. Es un par exactamente inverso: en neutro no cambia nada; solo afecta cómo actúa la saturación en negros
+  muy profundos.
+
+### Tests CPU vs GPU de la etapa creativa
+
+- Un grade realista completo cumple **< 1e-4 en el 100 % de los nodos** (33 y 65, trilineal y tetraédrica).
+- Seis grades aleatorios extremos (todas las herramientas al límite a la vez) cumplen 1e-4 en todos los nodos bien
+  condicionados. En menos del 0.1 % de los nodos la propia referencia amplifica cualquier cambio de la entrada
+  más de 100× (medido por diferencias finitas, hasta ~2000×). Ahí ninguna implementación en float32, tampoco la de
+  DaVinci, puede quedar debajo de 1e-4. Para esos nodos el test exige que el error quede acotado por esa
+  amplificación.
+
+### Rendimiento
+
+Medido en un Apple M1 (Chrome, ANGLE Metal), canvas de 1060×834, con un grade que activa todas las etapas:
+preparar + hornear + aplicar al preview tarda **~2 ms con N = 33** y ~2.4 ms con N = 65.
 
 ## Modo "Probar .cube"
 
