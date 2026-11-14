@@ -229,6 +229,9 @@ function writePref(key: string, v: boolean): void {
 
 const activeImage = (frames: Frame[], id: string | null) => frames.find((f) => f.id === id)?.image ?? null
 
+/** cuánto queda visible cada aviso antes de cerrarse solo (los errores quedan hasta cerrarlos) */
+const NOTICE_MS: Record<Notice['kind'], number | null> = { info: 4000, warn: 8000, error: null }
+
 let autoCommit: ReturnType<typeof setTimeout> | undefined
 /** los cambios que no llaman a commit (toggles, selects) se registran solos después de una pausa */
 const AUTO_COMMIT_MS = 600
@@ -310,14 +313,20 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setActiveFrame: (id) => set((s) => (s.frames.some((f) => f.id === id) ? { activeFrame: id, image: activeImage(s.frames, id) } : s)),
   setFrameLabel: (id, label) => set((s) => ({ frames: s.frames.map((f) => (f.id === id ? { ...f, label } : f)) })),
-  removeFrame: (id) =>
+  removeFrame: (id) => {
     set((s) => {
       const i = s.frames.findIndex((f) => f.id === id)
       if (i < 0) return s
       const frames = s.frames.filter((f) => f.id !== id)
       const activeFrame = s.activeFrame === id ? (frames[Math.min(i, frames.length - 1)]?.id ?? null) : s.activeFrame
       return { frames, activeFrame, image: activeImage(frames, activeFrame) }
-    }),
+    })
+    // sin frames, la próxima imagen arranca de cero (el look se reinicia; la conversión se conserva)
+    if (!get().frames.length) {
+      set({ matchKey: null })
+      get().resetParams()
+    }
+  },
   setGridView: (gridView) => set({ gridView }),
   setScopesAllFrames: (scopesAllFrames) => set({ scopesAllFrames }),
   setEmbedFrames: (embedFrames) => set({ embedFrames }),
@@ -340,7 +349,8 @@ export const useApp = create<AppState>((set, get) => ({
     autoCommit = setTimeout(() => get().commit(), AUTO_COMMIT_MS)
   },
   resetParams: () => {
-    set({ params: defaultParams() })
+    // la conversión depende del material, no del look: se conserva
+    set((s) => ({ params: { ...defaultParams(), conversion: { ...s.params.conversion } } }))
     get().commit()
   },
   commit: () => {
@@ -394,7 +404,12 @@ export const useApp = create<AppState>((set, get) => ({
     }),
   removeTestLayer: (id) => set((s) => ({ testLayers: s.testLayers.filter((l) => l.id !== id) })),
   clearTestLayers: () => set({ testLayers: [] }),
-  notify: (kind, text) => set((s) => ({ notices: [...s.notices.slice(-5), { id: seq++, kind, text }] })),
+  notify: (kind, text) => {
+    const id = seq++
+    set((s) => ({ notices: [...s.notices.slice(-5), { id, kind, text }] }))
+    const ms = NOTICE_MS[kind]
+    if (ms) setTimeout(() => get().dismissNotice(id), ms)
+  },
   dismissNotice: (id) => set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
   setGpuError: (gpuError) => set({ gpuError }),
   setBusy: (busy) => set({ busy }),

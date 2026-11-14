@@ -5,3 +5,5 @@ public/_smoke
 tiff-examples-apple-log-2
 .playwright-mcp
 *.tsbuildinfo
+.env
+exports

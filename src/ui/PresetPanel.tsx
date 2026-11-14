@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { EXAMPLE_PRESETS } from '../params/examples'
 import { applyPreset, parsePreset, presetFromParams, type Preset } from '../params/preset'
 import { decodeText, pickFiles, PROJECT_ACCEPT, saveFile } from '../io/platform'
@@ -6,12 +6,12 @@ import { cleanFileName } from './exportNames'
 import { Section } from './controls'
 import { useApp } from './store'
 
-/** Aplica un preset: todo el look en neutro y encima sus valores (el match calculado se conserva). */
+/** Aplica un preset: la etapa creativa en neutro y encima sus valores (entrada, conversión y match se conservan). */
 export function applyPresetToLook(preset: Preset): void {
   const st = useApp.getState()
   st.updateParams((p) => void Object.assign(p, applyPreset(preset, p)))
   st.commit()
-  st.notify('info', `Preset "${preset.name}" aplicado. Lo que no define quedó en neutro.`)
+  st.notify('info', `Preset "${preset.name}" aplicado. La entrada y la conversión no cambiaron; lo que el preset no define quedó en neutro.`)
 }
 
 export async function importPreset(): Promise<void> {
@@ -32,6 +32,16 @@ export function PresetPanel() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const st = useApp.getState()
+  const params = useApp((s) => s.params)
+  const [chosen, setChosen] = useState<number | null>(null)
+  // el ejemplo elegido queda seleccionado mientras el look coincida con él; si se edita, se marca como modificado
+  const same = useMemo(() => {
+    if (chosen === null) return false
+    const now = JSON.stringify(presetFromParams(params, '').params)
+    return JSON.stringify(presetFromParams(applyPreset(EXAMPLE_PRESETS[chosen], params), '').params) === now
+  }, [chosen, params])
+  const neutral = Object.keys(presetFromParams(params, '').params).length === 0
+  const shown = chosen !== null && !neutral ? String(chosen) : ''
 
   const exportPreset = () => {
     const n = name.trim() || 'Mi look'
@@ -44,22 +54,27 @@ export function PresetPanel() {
   return (
     <Section title="Presets" defaultOpen={false}>
       <div className="row">
-        <button onClick={() => void importPreset()} title="Carga un preset .json: valida cada parámetro y su rango">
+        <button onClick={() => void importPreset().then(() => setChosen(null))} title="Carga un preset .json: valida cada parámetro y su rango">
           Importar preset…
         </button>
         <label className="field">
           <span>Ejemplos</span>
           <select
-            value=""
+            value={shown}
             onChange={(e) => {
-              const p = EXAMPLE_PRESETS[Number(e.target.value)]
-              if (p) applyPresetToLook(p)
+              const i = Number(e.target.value)
+              const p = e.target.value === '' ? undefined : EXAMPLE_PRESETS[i]
+              if (p) {
+                applyPresetToLook(p)
+                setChosen(i)
+              }
             }}
           >
             <option value="">Elegir…</option>
             {EXAMPLE_PRESETS.map((p, i) => (
               <option key={p.name} value={i}>
                 {p.name}
+                {String(i) === shown && !same ? ' (modificado)' : ''}
               </option>
             ))}
           </select>
@@ -75,8 +90,9 @@ export function PresetPanel() {
       </label>
       <button onClick={exportPreset}>Exportar preset…</button>
       <p className="hint">
-        Un preset guarda solo los parámetros que difieren del neutro (sin imágenes, LUTs ni el match, que dependen del
-        material). Al importarlo, lo que no define queda en neutro. El formato y todos los parámetros están en
+        Un preset guarda los ajustes del look sobre la imagen ya convertida a Rec.709, solo los que difieren del neutro.
+        No incluye la entrada, la conversión, el match, imágenes ni LUTs (dependen del material): aplicarlo no los toca.
+        Al importarlo, lo que no define queda en neutro. El formato y todos los parámetros están en
         docs/PARAMETROS_PARA_IA.md.
       </p>
     </Section>

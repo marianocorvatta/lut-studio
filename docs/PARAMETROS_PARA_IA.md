@@ -25,11 +25,11 @@ El `id` es la clave que se usa en el preset. "Neutro" es el valor que no cambia 
 
 | id | Nombre | Sección | Etapa | Tipo | Rango | Neutro | Unidad | Paso | Qué hace | En presets |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `input.exposure` | Exposición | Entrada | 1. Entrada | número | -4 a 4 | `0` | stops | 0.01 | Aclara (+) u oscurece (−) la toma como si se hubiera expuesto distinto: multiplica la luz lineal de escena por 2^stops, antes de la conversión. No entra en el LUT de solo look. | sí |
-| `input.temperature` | Temperatura | Entrada | 1. Entrada | número | 2500 a 12000 | `6500` | K | 10 | Balance de blancos sobre la señal log (Bradford en Apple Wide Gamut). Más de 6500 K calienta la imagen (más naranja); menos, la enfría (más azul). No entra en el LUT de solo look. | sí |
-| `input.tint` | Tinte | Entrada | 1. Entrada | número | -100 a 100 | `0` | — | 1 | Compensa el eje verde–magenta del balance de blancos: + agrega magenta, − agrega verde. No entra en el LUT de solo look. | sí |
-| `conversion.enabled` | Convertir | Conversión | 2. Conversión | booleano | true / false | `true` | — | — | Activa la conversión Apple Log 2 → Rec.709. Apagada, la imagen pasa sin convertir (útil si el material ya está en Rec.709). | sí |
-| `conversion.source` | Fuente de la conversión | Conversión | 2. Conversión | texto: "lut" / "formula" | lut, formula | `"lut"` | — | — | Cómo se pasa de log a Rec.709. El .cube oficial de Apple es la referencia; la fórmula es una aproximación propia con más contraste en los colores saturados. | sí |
+| `input.exposure` | Exposición | Entrada | 1. Entrada | número | -4 a 4 | `0` | stops | 0.01 | Aclara (+) u oscurece (−) la toma como si se hubiera expuesto distinto: multiplica la luz lineal de escena por 2^stops, antes de la conversión. No entra en el LUT de solo look. Depende de la toma: no entra en los presets. | no |
+| `input.temperature` | Temperatura | Entrada | 1. Entrada | número | 2500 a 12000 | `6500` | K | 10 | Balance de blancos sobre la señal log (Bradford en Apple Wide Gamut). Más de 6500 K calienta la imagen (más naranja); menos, la enfría (más azul). No entra en el LUT de solo look. Depende de la toma: no entra en los presets. | no |
+| `input.tint` | Tinte | Entrada | 1. Entrada | número | -100 a 100 | `0` | — | 1 | Compensa el eje verde–magenta del balance de blancos: + agrega magenta, − agrega verde. No entra en el LUT de solo look. Depende de la toma: no entra en los presets. | no |
+| `conversion.enabled` | Convertir | Conversión | 2. Conversión | booleano | true / false | `true` | — | — | Activa la conversión Apple Log 2 → Rec.709. Apagada, la imagen pasa sin convertir (útil si el material ya está en Rec.709). Depende del material: no entra en los presets. | no |
+| `conversion.source` | Fuente de la conversión | Conversión | 2. Conversión | texto: "lut" / "formula" | lut, formula | `"lut"` | — | — | Cómo se pasa de log a Rec.709. El .cube oficial de Apple es la referencia; la fórmula es una aproximación propia con más contraste en los colores saturados. Depende del material: no entra en los presets. | no |
 | `grade.lift.x` | Lift: color X (Cb) | Primarias | 3. Etapa creativa | número | -1 a 1 | `0` | — | 0.01 | Empuja el color de las sombras (afecta poco a las altas) sobre el eje Cb: + hacia azul, − hacia amarillo. Junto con Y forma un punto del disco (radio ≤ 1). | sí |
 | `grade.lift.y` | Lift: color Y (Cr) | Primarias | 3. Etapa creativa | número | -1 a 1 | `0` | — | 0.01 | Empuja el color de las sombras (afecta poco a las altas) sobre el eje Cr: + hacia rojo, − hacia cian/verde. Junto con X forma un punto del disco (radio ≤ 1). | sí |
 | `grade.lift.master` | Lift: maestro | Primarias | 3. Etapa creativa | número | -0.5 a 0.5 | `0` | — | 0.001 | Sube (+) o baja (−) el nivel de negro: aclara u oscurece las sombras manteniendo el blanco. | sí |
@@ -109,7 +109,7 @@ Cada elemento de `qualifiers` es un objeto con `name` (texto), `enabled` (boolea
 - Un `id` desconocido o un valor fuera de rango hacen que la app rechace el preset y diga cuál es el problema.
 - Las ruedas (`grade.lift.x` / `grade.lift.y`, etc.) son un punto del disco: `x² + y² ≤ 1`.
 - Las curvas son listas de puntos `{ "x": …, "y": … }` con `x` estrictamente creciente. Las curvas RGB necesitan al menos los dos extremos; una curva de tono vacía (`[]`) no cambia nada.
-- El match con referencia, la etapa de entrada y la conversión dependen del material: un look pensado para cualquier toma no debería tocar `input.*`.
+- Un preset es la etapa creativa: los ajustes que se aplican sobre la imagen Apple Log ya convertida a Rec.709 γ2.4. La entrada (`input.*`), la conversión (`conversion.*`) y el match dependen del material y no entran: si un preset viejo trae `input.*` o `conversion.*`, se ignoran.
 
 ### JSON Schema
 
@@ -138,36 +138,6 @@ Cada elemento de `qualifiers` es un objeto con `name` (texto), `enabled` (boolea
     "params": {
       "type": "object",
       "properties": {
-        "input.exposure": {
-          "description": "Aclara (+) u oscurece (−) la toma como si se hubiera expuesto distinto: multiplica la luz lineal de escena por 2^stops, antes de la conversión. No entra en el LUT de solo look.",
-          "type": "number",
-          "minimum": -4,
-          "maximum": 4
-        },
-        "input.temperature": {
-          "description": "Balance de blancos sobre la señal log (Bradford en Apple Wide Gamut). Más de 6500 K calienta la imagen (más naranja); menos, la enfría (más azul). No entra en el LUT de solo look.",
-          "type": "number",
-          "minimum": 2500,
-          "maximum": 12000
-        },
-        "input.tint": {
-          "description": "Compensa el eje verde–magenta del balance de blancos: + agrega magenta, − agrega verde. No entra en el LUT de solo look.",
-          "type": "number",
-          "minimum": -100,
-          "maximum": 100
-        },
-        "conversion.enabled": {
-          "description": "Activa la conversión Apple Log 2 → Rec.709. Apagada, la imagen pasa sin convertir (útil si el material ya está en Rec.709).",
-          "type": "boolean"
-        },
-        "conversion.source": {
-          "description": "Cómo se pasa de log a Rec.709. El .cube oficial de Apple es la referencia; la fórmula es una aproximación propia con más contraste en los colores saturados.",
-          "type": "string",
-          "enum": [
-            "lut",
-            "formula"
-          ]
-        },
         "grade.lift.x": {
           "description": "Empuja el color de las sombras (afecta poco a las altas) sobre el eje Cb: + hacia azul, − hacia amarillo. Junto con Y forma un punto del disco (radio ≤ 1).",
           "type": "number",

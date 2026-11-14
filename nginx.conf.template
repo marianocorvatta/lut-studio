@@ -1,0 +1,36 @@
+# Plantilla: la imagen oficial de nginx reemplaza las variables de entorno al arrancar
+# (solo las definidas; las variables propias de nginx como $uri quedan intactas).
+server {
+  listen 80;
+  root /usr/share/nginx/html;
+
+  location / {
+    try_files $uri /index.html;
+  }
+
+  # index.html sin caché, para tomar siempre la última versión
+  location = /index.html {
+    add_header Cache-Control "no-cache";
+  }
+
+  # los assets llevan hash en el nombre
+  location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+  }
+
+  # carpeta de exportación de los .cube (LUT_EXPORT_DIR en el host, montada en /luts).
+  # Vacía: la app descarga el archivo con el navegador.
+  location = /export-config.json {
+    default_type application/json;
+    add_header Cache-Control "no-cache";
+    return 200 '{"dir":"${LUT_EXPORT_DIR}"}';
+  }
+
+  location /luts/ {
+    alias /luts/;
+    limit_except PUT { deny all; }
+    dav_methods PUT;
+    dav_access user:rw group:rw all:r;
+    client_max_body_size 64m;
+  }
+}

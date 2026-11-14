@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 export function Section({
   title,
@@ -43,6 +43,7 @@ export function Slider({
   disabled,
   title,
   onCommit,
+  track,
 }: {
   label: string
   value: number
@@ -57,6 +58,8 @@ export function Slider({
   title?: string
   /** se llama al terminar un cambio (soltar, tecla, restablecer): punto del historial de deshacer */
   onCommit?: () => void
+  /** degradé de la barra (CSS background): muestra el color que da cada valor */
+  track?: string
 }) {
   const text = format ? format(value) : value.toFixed(step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3)
   return (
@@ -69,6 +72,8 @@ export function Slider({
         step={step}
         value={value}
         disabled={disabled}
+        className={track ? 'range--track' : undefined}
+        style={track ? ({ '--track': track } as CSSProperties) : undefined}
         onChange={(e) => onChange(Number(e.target.value))}
         onPointerUp={() => onCommit?.()}
         onKeyUp={() => onCommit?.()}

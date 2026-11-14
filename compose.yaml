@@ -5,4 +5,9 @@ services:
     container_name: lut-studio
     ports:
       - "8173:80"
+    environment:
+      # carpeta del host donde se guardan los .cube exportados (vacía: se descargan con el navegador)
+      LUT_EXPORT_DIR: ${LUT_EXPORT_DIR:-}
+    volumes:
+      - ${LUT_EXPORT_DIR:-./exports}:/luts
     restart: unless-stopped

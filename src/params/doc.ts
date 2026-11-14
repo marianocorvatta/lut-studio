@@ -104,7 +104,7 @@ export function generateParamsDoc(): string {
     '- Un `id` desconocido o un valor fuera de rango hacen que la app rechace el preset y diga cuál es el problema.',
     '- Las ruedas (`grade.lift.x` / `grade.lift.y`, etc.) son un punto del disco: `x² + y² ≤ 1`.',
     '- Las curvas son listas de puntos `{ "x": …, "y": … }` con `x` estrictamente creciente. Las curvas RGB necesitan al menos los dos extremos; una curva de tono vacía (`[]`) no cambia nada.',
-    '- El match con referencia, la etapa de entrada y la conversión dependen del material: un look pensado para cualquier toma no debería tocar `input.*`.',
+    '- Un preset es la etapa creativa: los ajustes que se aplican sobre la imagen Apple Log ya convertida a Rec.709 γ2.4. La entrada (`input.*`), la conversión (`conversion.*`) y el match dependen del material y no entran: si un preset viejo trae `input.*` o `conversion.*`, se ignoran.',
     '',
     '### JSON Schema',
     '',

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Wheel } from '../color/params'
 import { cssRgb, hueColor, REC709_VECTORS } from '../color/vectors'
+import { lumTrack } from './tracks'
+
+/** barra del maestro: de oscuro a claro */
+const MASTER_TRACK = lumTrack(0.1, 0.95)
 
 /** radio del disco y margen para las etiquetas, en unidades del viewBox */
 const R = 46
@@ -158,6 +162,8 @@ export function ColorWheel({
         max={masterMax}
         step={masterStep}
         value={value.master}
+        className="range--track"
+        style={{ '--track': MASTER_TRACK } as React.CSSProperties}
         onChange={(e) => onChange({ ...value, master: Number(e.target.value) })}
         onPointerUp={() => onCommit?.()}
         onKeyUp={() => onCommit?.()}

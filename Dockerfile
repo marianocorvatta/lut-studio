@@ -6,8 +6,9 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Etapa 2: servir los archivos estáticos
+# Etapa 2: servir los archivos estáticos (y recibir los .cube exportados en /luts)
 FROM nginx:1.29-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
+RUN mkdir -p /luts
 EXPOSE 80

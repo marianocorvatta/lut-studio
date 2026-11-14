@@ -1,5 +1,6 @@
 /**
- * Presets: solo parámetros (sin imágenes ni LUTs), con la versión del esquema, nombre, descripción y los valores
+ * Presets: solo los parámetros de la etapa creativa (lo que se aplica sobre la imagen ya convertida a Rec.709),
+ * sin la entrada ni la conversión, que dependen del material, y sin imágenes ni LUTs; con la versión del esquema, nombre, descripción y los valores
  * que difieren del neutro. Lo que no aparece queda en neutro. La validación (Zod) sale del esquema.
  */
 import { z } from 'zod'
@@ -124,6 +125,10 @@ export function parsePreset(text: string): PresetResult {
   }
   if (raw && typeof raw === 'object' && 'format' in raw && (raw as { format: unknown }).format === 'lut-studio-project')
     return { ok: false, errors: ['Es un proyecto, no un preset: abrilo con "Abrir proyecto…".'] }
+  // presets viejos podían traer la entrada o la conversión: dependen del material y se ignoran
+  const params = raw && typeof raw === 'object' ? (raw as { params?: unknown }).params : undefined
+  if (params && typeof params === 'object')
+    for (const k of Object.keys(params)) if (k.startsWith('conversion.') || k.startsWith('input.')) delete (params as Record<string, unknown>)[k]
   const r = presetSchema.safeParse(raw)
   return r.success ? { ok: true, preset: r.data as Preset } : { ok: false, errors: formatIssues(r.error) }
 }

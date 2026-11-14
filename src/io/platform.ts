@@ -39,6 +39,35 @@ export function saveFile(name: string, content: string | ArrayBuffer | Uint8Arra
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
+let exportDir: Promise<string | null> | null = null
+
+/**
+ * Carpeta de exportación configurada en el servidor (LUT_EXPORT_DIR, en Docker), o null si no hay: en ese caso
+ * los archivos se descargan con el navegador. Se consulta una sola vez.
+ */
+export function getExportDir(): Promise<string | null> {
+  exportDir ??= fetch('/export-config.json', { cache: 'no-store' })
+    .then((r) => (r.ok && r.headers.get('content-type')?.includes('json') ? r.json() : null))
+    .then((c: { dir?: unknown } | null) => (typeof c?.dir === 'string' && c.dir.trim() ? c.dir : null))
+    .catch(() => null)
+  return exportDir
+}
+
+/**
+ * Guarda el archivo en la carpeta de exportación del servidor si hay una configurada; si no, lo descarga.
+ * Devuelve la carpeta donde quedó, o null si se descargó.
+ */
+export async function exportFile(name: string, content: string, mime = 'text/plain'): Promise<string | null> {
+  const dir = await getExportDir()
+  if (dir) {
+    const r = await fetch(`/luts/${encodeURIComponent(name)}`, { method: 'PUT', body: content, headers: { 'Content-Type': mime } })
+    if (!r.ok) throw new Error(`el servidor no pudo guardarlo en ${dir} (HTTP ${r.status})`)
+    return dir
+  }
+  saveFile(name, content, mime)
+  return null
+}
+
 export function decodeText(bytes: ArrayBuffer): string {
   return new TextDecoder('utf-8').decode(bytes)
 }

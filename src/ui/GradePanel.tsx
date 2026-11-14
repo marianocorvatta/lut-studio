@@ -8,6 +8,7 @@ import { CurveEditor } from './CurveEditor'
 import { ParamSlider } from './ParamControls'
 import { numberParam } from '../params/schema'
 import { useApp } from './store'
+import { amountTrack, balanceTrack, hueTrack, lumTrack, satTrack } from './tracks'
 
 // rangos y neutros del maestro de cada rueda: del esquema de parámetros
 const WHEELS: { id: WheelName; label: string; min: number; max: number; def: number }[] = (['lift', 'gamma', 'gain', 'offset'] as const).map((id) => {
@@ -82,6 +83,7 @@ export function GradePanel() {
   const [hueTab, setHueTab] = useState<HueCurveName>('hueHue')
   const def = defaultParams()
   const g = params.grade
+  const split = params.splitTone
   const set = (fn: (p: LookParams) => void) => update(fn)
 
   const curveChanged = (id: RgbCurveName) => params.curves[id].some((p) => Math.abs(p.x - p.y) > 1e-9) || params.curves[id].length !== 2
@@ -139,11 +141,11 @@ export function GradePanel() {
         }}
       >
         <ParamSlider id="grade.contrast" label="Contraste" />
-        <ParamSlider id="grade.pivot" label="Pivote" />
-        <ParamSlider id="grade.saturation" label="Saturación" />
-        <ParamSlider id="grade.satShadows" label="Sat. sombras" />
-        <ParamSlider id="grade.satMids" label="Sat. medios" />
-        <ParamSlider id="grade.satHighs" label="Sat. altas" />
+        <ParamSlider id="grade.pivot" label="Pivote" track={() => lumTrack(0, 1)} />
+        <ParamSlider id="grade.saturation" label="Saturación" track={() => satTrack()} />
+        <ParamSlider id="grade.satShadows" label="Sat. sombras" track={() => satTrack(0.42, 0.13)} />
+        <ParamSlider id="grade.satMids" label="Sat. medios" track={() => satTrack(0.65, 0.17)} />
+        <ParamSlider id="grade.satHighs" label="Sat. altas" track={() => satTrack(0.86, 0.11)} />
         <p className="hint">La saturación se calcula en Oklab: cambia la croma sin mover la luminancia percibida.</p>
       </Section>
 
@@ -237,11 +239,11 @@ export function GradePanel() {
           commit()
         }}
       >
-        <ParamSlider id="splitTone.shadowHue" label="Tono sombras" />
-        <ParamSlider id="splitTone.shadowAmount" label="Cant. sombras" />
-        <ParamSlider id="splitTone.highHue" label="Tono altas" />
-        <ParamSlider id="splitTone.highAmount" label="Cant. altas" />
-        <ParamSlider id="splitTone.balance" label="Balance" />
+        <ParamSlider id="splitTone.shadowHue" label="Tono sombras" track={() => hueTrack(0.5, 0.13)} />
+        <ParamSlider id="splitTone.shadowAmount" label="Cant. sombras" track={() => amountTrack(split.shadowHue, 0.5)} />
+        <ParamSlider id="splitTone.highHue" label="Tono altas" track={() => hueTrack(0.8, 0.12)} />
+        <ParamSlider id="splitTone.highAmount" label="Cant. altas" track={() => amountTrack(split.highHue, 0.8)} />
+        <ParamSlider id="splitTone.balance" label="Balance" track={() => balanceTrack(split.shadowHue, split.highHue)} />
         <p className="hint">Los tonos son ángulos OkLCh. Balance + desplaza el límite hacia las altas.</p>
       </Section>
     </>

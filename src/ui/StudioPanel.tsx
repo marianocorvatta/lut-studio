@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { APPLE_WIDE_GAMUT } from '../color/appleLog2.constants'
 import type { Lut } from '../color/lut'
 import { defaultParams, type LutSize } from '../color/params'
@@ -10,10 +10,12 @@ import { GradePanel } from './GradePanel'
 import { PresetPanel } from './PresetPanel'
 import { ParamSlider, ParamToggle } from './ParamControls'
 import { exportNames } from './exportNames'
+import { getExportDir } from '../io/platform'
 import { MatchPanel } from './MatchPanel'
 import { QualifierPanel } from './QualifierPanel'
 import { inputIsNeutral } from '../color/variants'
 import { useApp } from './store'
+import { lumTrack, temperatureTrack, tintTrack } from './tracks'
 
 const lutMeta = (l: Lut) => `${l.kind} · ${l.kind === '3D' ? `${l.size}³` : l.size}${l.title ? ` · ${l.title}` : ''}`
 
@@ -36,6 +38,8 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
   const interpolation = useApp((s) => s.interpolation)
   const def = defaultParams()
   const inputDisabled = prepared.convMode === CONV_OFF
+  const [exportDir, setExportDir] = useState<string | null>(null)
+  useEffect(() => void getExportDir().then(setExportDir), [])
 
   // Validación de la fórmula contra el .cube de conversión cargado (por ejemplo, el oficial de Apple)
   const formulaVsLut = useMemo(() => {
@@ -56,7 +60,7 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
         <button onClick={() => useApp.getState().redo()} disabled={!canRedo} title="Rehacer (⇧⌘Z / Ctrl+Y)">
           ↷ Rehacer
         </button>
-        <button onClick={() => useApp.getState().resetParams()} title="Vuelve todos los controles a neutro (se puede deshacer)">
+        <button onClick={() => useApp.getState().resetParams()} title="Vuelve todos los controles del look a neutro; la conversión se conserva (se puede deshacer)">
           Restablecer todo
         </button>
       </div>
@@ -87,12 +91,10 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
         </p>
       ))}
 
-      <PresetPanel />
-
       <Section title="Entrada (señal log)" onReset={() => update((p) => void (p.input = def.input))}>
-        <ParamSlider id="input.exposure" label="Exposición" disabled={inputDisabled} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} st`} />
-        <ParamSlider id="input.temperature" label="Temperatura" disabled={inputDisabled} />
-        <ParamSlider id="input.tint" label="Tinte" disabled={inputDisabled} />
+        <ParamSlider id="input.exposure" label="Exposición" disabled={inputDisabled} track={() => lumTrack(0.1, 0.97)} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} st`} />
+        <ParamSlider id="input.temperature" label="Temperatura" disabled={inputDisabled} track={temperatureTrack} />
+        <ParamSlider id="input.tint" label="Tinte" disabled={inputDisabled} track={tintTrack} />
         <p className="hint">
           {inputDisabled
             ? 'La etapa de entrada trabaja sobre la señal Apple Log 2: activá la conversión para usarla.'
@@ -165,6 +167,8 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
         )}
       </Section>
 
+      <PresetPanel />
+
       <MatchPanel />
 
       <GradePanel />
@@ -231,9 +235,10 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
             )}
           </span>
         </label>
-        <button className="primary" onClick={exportCube}>
-          Exportar .cube…
+        <button className="primary" onClick={() => void exportCube()} title={exportDir ? `Se guarda en ${exportDir}` : undefined}>
+          {exportDir ? 'Exportar .cube' : 'Exportar .cube…'}
         </button>
+        {exportDir && <p className="hint">Se guarda directo en {exportDir} (LUT_EXPORT_DIR). Si ya existe uno con el mismo nombre, se reemplaza.</p>}
         <p className="hint">
           {exportKind === 'look'
             ? 'Hornea la etapa creativa completa (incluido el LUT creativo y su intensidad) sobre una grilla Rec.709 0–1. Usalo después de convertir a Rec.709 γ2.4 (Color Space Transform en DaVinci) o con material de otras cámaras ya convertido. Con la entrada en neutro, conversión + este LUT da lo mismo que el LUT completo salvo el error de interpolar dos LUTs en cadena.'

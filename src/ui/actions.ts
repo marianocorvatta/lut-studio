@@ -3,7 +3,7 @@ import type { Lut } from '../color/lut'
 import { inputIsNeutral, prepareLookOnly } from '../color/variants'
 import { decodeImage, type FloatImage } from '../io/image'
 import { frameHash, lutHash, parseProject, serializeProject } from '../io/project'
-import { CUBE_ACCEPT, decodeText, IMAGE_ACCEPT, pickFiles, PROJECT_ACCEPT, saveFile, type PickedFile } from '../io/platform'
+import { CUBE_ACCEPT, decodeText, exportFile, IMAGE_ACCEPT, pickFiles, PROJECT_ACCEPT, saveFile, type PickedFile } from '../io/platform'
 import { exportNames } from './exportNames'
 import { loadReferenceFile } from './matchActions'
 import { MAX_FRAMES, useApp } from './store'
@@ -217,7 +217,7 @@ export async function handleDroppedFiles(files: PickedFile[]): Promise<void> {
  * GPU la etapa creativa completa (incluido el LUT creativo) sobre la grilla identidad Rec.709 0..1, sin la
  * etapa de entrada ni la conversión.
  */
-export function exportCube(): void {
+export async function exportCube(): Promise<void> {
   const app = useApp.getState()
   const r = viewerApi.renderer
   if (!r) return
@@ -245,8 +245,8 @@ export function exportCube(): void {
             `Conversion: ${app.params.conversion.enabled ? (app.params.conversion.source === 'lut' ? (app.conversionLut?.name ?? 'sin LUT') : 'formula') : 'apagada'}`,
             interpText,
           ]
-    saveFile(file, writeCube(lut, { title, comments }), 'text/plain')
-    app.notify('info', `Exportado ${file} (${lut.size}³).`)
+    const dir = await exportFile(file, writeCube(lut, { title, comments }), 'text/plain')
+    app.notify('info', dir ? `Exportado ${file} (${lut.size}³) en ${dir}.` : `Exportado ${file} (${lut.size}³).`)
     if (kind === 'look' && !inputIsNeutral(app.params))
       app.notify(
         'warn',

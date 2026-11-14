@@ -85,6 +85,50 @@ input[type='checkbox'] {
   accent-color: #9a9a9a;
 }
 
+/* sliders con degradé: la barra muestra el color que da cada valor (--track) */
+input[type='range'].range--track {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range'].range--track::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+input[type='range'].range--track::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+input[type='range'].range--track::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: #e6e6e6;
+  border: 2px solid #1b1b1b;
+  box-shadow: 0 0 0 1px #8c8c8c;
+}
+input[type='range'].range--track::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e6e6e6;
+  border: 2px solid #1b1b1b;
+  box-shadow: 0 0 0 1px #8c8c8c;
+}
+input[type='range'].range--track:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 kbd {
   background: var(--control);
   border: 1px solid var(--line);

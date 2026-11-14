@@ -128,11 +128,11 @@ const curve = (id: string, name: string, section: string, kind: 'rgb' | 'hue' | 
 
 export const PARAMS: ParamDef[] = [
   // --- Entrada
-  n('input.exposure', 'Exposición', 'Entrada', 'entrada', [-4, 4, 0.01], 0, 'stops', 'Aclara (+) u oscurece (−) la toma como si se hubiera expuesto distinto: multiplica la luz lineal de escena por 2^stops, antes de la conversión. No entra en el LUT de solo look.'),
-  n('input.temperature', 'Temperatura', 'Entrada', 'entrada', [2500, 12000, 10], 6500, 'K', 'Balance de blancos sobre la señal log (Bradford en Apple Wide Gamut). Más de 6500 K calienta la imagen (más naranja); menos, la enfría (más azul). No entra en el LUT de solo look.'),
-  n('input.tint', 'Tinte', 'Entrada', 'entrada', [-100, 100, 1], 0, '', 'Compensa el eje verde–magenta del balance de blancos: + agrega magenta, − agrega verde. No entra en el LUT de solo look.'),
+  n('input.exposure', 'Exposición', 'Entrada', 'entrada', [-4, 4, 0.01], 0, 'stops', 'Aclara (+) u oscurece (−) la toma como si se hubiera expuesto distinto: multiplica la luz lineal de escena por 2^stops, antes de la conversión. No entra en el LUT de solo look. Depende de la toma: no entra en los presets.', false),
+  n('input.temperature', 'Temperatura', 'Entrada', 'entrada', [2500, 12000, 10], 6500, 'K', 'Balance de blancos sobre la señal log (Bradford en Apple Wide Gamut). Más de 6500 K calienta la imagen (más naranja); menos, la enfría (más azul). No entra en el LUT de solo look. Depende de la toma: no entra en los presets.', false),
+  n('input.tint', 'Tinte', 'Entrada', 'entrada', [-100, 100, 1], 0, '', 'Compensa el eje verde–magenta del balance de blancos: + agrega magenta, − agrega verde. No entra en el LUT de solo look. Depende de la toma: no entra en los presets.', false),
   // --- Conversión
-  b('conversion.enabled', 'Convertir', 'Conversión', 'conversion', true, 'Activa la conversión Apple Log 2 → Rec.709. Apagada, la imagen pasa sin convertir (útil si el material ya está en Rec.709).'),
+  b('conversion.enabled', 'Convertir', 'Conversión', 'conversion', true, 'Activa la conversión Apple Log 2 → Rec.709. Apagada, la imagen pasa sin convertir (útil si el material ya está en Rec.709). Depende del material: no entra en los presets.', false),
   {
     type: 'enum',
     id: 'conversion.source',
@@ -144,8 +144,8 @@ export const PARAMS: ParamDef[] = [
       { value: 'formula', label: 'Fórmula (curva de Apple + tone mapping propio)' },
     ],
     neutral: 'lut',
-    description: 'Cómo se pasa de log a Rec.709. El .cube oficial de Apple es la referencia; la fórmula es una aproximación propia con más contraste en los colores saturados.',
-    preset: true,
+    description: 'Cómo se pasa de log a Rec.709. El .cube oficial de Apple es la referencia; la fórmula es una aproximación propia con más contraste en los colores saturados. Depende del material: no entra en los presets.',
+    preset: false,
   },
   // --- Primarias
   ...wheel('lift', 'Lift', [-0.5, 0.5, 0.001], 0, 'Sube (+) o baja (−) el nivel de negro: aclara u oscurece las sombras manteniendo el blanco.'),

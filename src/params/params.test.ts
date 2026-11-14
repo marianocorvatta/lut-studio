@@ -6,7 +6,7 @@ import { toLch } from '../color/qualifiers'
 import docFile from '../../docs/PARAMETROS_PARA_IA.md?raw'
 import { generateParamsDoc } from './doc'
 import { EXAMPLE_PRESETS } from './examples'
-import { applyPreset, parsePreset, presetFromParams, presetJsonSchema, PRESET_FORMAT } from './preset'
+import { applyPreset, parsePreset, presetFromParams, presetJsonSchema, PRESET_FORMAT, type Preset } from './preset'
 import { getParam, NON_EDITABLE, PARAMS, QUALIFIER_FIELDS, SCHEMA_VERSION } from './schema'
 import { newQualifier } from '../color/qualifiers'
 
@@ -80,12 +80,25 @@ describe('presets', () => {
     expect(p.qualifiers).toEqual([])
   })
 
+  it('aplicar un preset no toca la entrada ni la conversión (dependen del material)', () => {
+    const base = defaultParams()
+    base.conversion = { enabled: true, source: 'formula' }
+    base.input.exposure = 0.7
+    const r = parsePreset(wrap({ 'grade.contrast': 1.2, 'conversion.source': 'lut', 'input.exposure': -1 }))
+    expect(r.ok).toBe(true)
+    const p = applyPreset((r as { ok: true; preset: Preset }).preset, base)
+    expect(p.conversion).toEqual({ enabled: true, source: 'formula' })
+    expect(p.input.exposure).toBe(0.7)
+    expect(p.grade.contrast).toBe(1.2)
+    expect(presetFromParams(base, 'a').params).toEqual({})
+  })
+
   it('un preset del look actual solo lleva lo que difiere del neutro', () => {
     const p = defaultParams()
     p.grade.contrast = 1.3
     p.splitTone.highAmount = 0.2
     p.input.exposure = 0.5
-    expect(presetFromParams(p, 'a').params).toEqual({ 'input.exposure': 0.5, 'grade.contrast': 1.3, 'splitTone.highAmount': 0.2 })
+    expect(presetFromParams(p, 'a').params).toEqual({ 'grade.contrast': 1.3, 'splitTone.highAmount': 0.2 })
   })
 
   it('errores claros: parámetro inexistente, fuera de rango, ruedas, curvas, formato', () => {
@@ -96,7 +109,7 @@ describe('presets', () => {
     }
     expect(errs(wrap({ 'grade.contraste': 1.2 }))).toMatch(/"grade\.contraste" no es un parámetro válido/)
     expect(errs(wrap({ 'grade.contrast': 3 }))).toMatch(/params\["grade\.contrast"\]: el valor supera el máximo \(2\)/)
-    expect(errs(wrap({ 'input.temperature': 1000 }))).toMatch(/params\["input\.temperature"\]: el valor está por debajo del mínimo \(2500\)/)
+    expect(errs(wrap({ 'splitTone.shadowHue': -5 }))).toMatch(/params\["splitTone\.shadowHue"\]: el valor está por debajo del mínimo \(0\)/)
     expect(errs(wrap({ 'grade.saturation': '1.2' }))).toMatch(/grade\.saturation"\]: se esperaba un número/)
     expect(errs(wrap({ 'grade.gain.x': 0.8, 'grade.gain.y': 0.8 }))).toMatch(/fuera del disco/)
     expect(errs(wrap({ 'curves.r': [{ x: 0.5, y: 0.5 }, { x: 0.2, y: 0.3 }] }))).toMatch(/ordenados por x/)

@@ -1,8 +1,8 @@
 # LUT Studio
 
-Aplicación web, sin servidor, para crear y probar LUTs 3D (`.cube`) a partir de frames grabados en **Apple Log 2**.
+Aplicación web para crear y probar LUTs 3D (`.cube`) a partir de frames grabados en **Apple Log 2**.
 
-Abrís uno o varios frames (TIFF o PNG de 16 bits), los convertís a Rec.709, armás el look y exportás el resultado como `.cube` para usarlo en DaVinci Resolve u otro programa.
+Abrís uno o varios frames (TIFF o PNG de 16 bits), los convertís a Rec.709, armás el look y exportás el resultado como `.cube` para usarlo en DaVinci Resolve u otro programa. Todo el procesamiento corre en el navegador; con Docker, opcionalmente, el `.cube` se guarda directo en una carpeta (por ejemplo, la de LUTs de Resolve).
 
 ## Qué hace
 
@@ -16,16 +16,17 @@ Abrís uno o varios frames (TIFF o PNG de 16 bits), los convertís a Rec.709, ar
   - split toning;
   - un LUT creativo con intensidad regulable.
 - **Corrección por color (qualifiers):** hasta 6 correcciones, cada una con gotero (promedia un área, en el punto del pipeline anterior a esa corrección), selección suave en OkLCh (tono, croma y luminancia, con ancho y suavidad) y ajustes de tono, saturación, luminancia e intensidad. Vista de máscara en blanco y negro (solo pantalla) e indicador de la zona en el vectorscopio y en las curvas de tono.
-- **Varios frames:** hasta 6 frames a la vez, con etiqueta editable. Se edita uno (el principal) y la grilla muestra todos con el mismo LUT. Los scopes pueden mostrar el principal o todos combinados.
+- **Varios frames:** hasta 6 frames a la vez, con etiqueta editable. Se edita uno (el principal) y la grilla muestra todos con el mismo LUT. Los scopes pueden mostrar el principal o todos combinados. Al quitar el último frame, el look vuelve a neutro (se conserva la conversión elegida), así la próxima imagen arranca de cero; "Restablecer todo" hace lo mismo con frames cargados.
 - **Alertas del LUT:** overlay con falso color para los píxeles que recortan (por debajo de 0 o por encima de 1 antes del clamp final), y diagnóstico de quiebres e inversiones de luminancia. Los quiebres y las inversiones se buscan en el look solo (Rec.709 → Rec.709), no en la conversión log → Rec.709: esa conversión tiene rodillas y un gamut amplio donde subir el azul baja la luminancia, y no son artefactos. Muestra cuántas celdas del LUT tienen cada problema y qué porcentaje de los píxeles de tus frames cae en ellas. Se calcula en un worker, sin trabar los controles.
 - **Exportar solo el look:** además del LUT completo (log → Rec.709 + look), un `.cube` de Rec.709 γ2.4 a Rec.709 γ2.4 con solo la parte creativa, para usar después de un Color Space Transform o con material de otras cámaras. La vista previa "como lo vería con solo el look" aplica la conversión y después ese LUT, en cadena. Con la entrada en neutro coincide con el LUT completo salvo el error de interpolar dos LUTs en cadena (en un look típico, promedio 1.1e-3 en 33³ y 3.9e-4 en 65³; el máximo, 0.09 y 0.06, aparece cerca del negro en colores saturados).
 - **Línea de tono de piel en el vectorscopio:** el eje I de YIQ calculado con la misma matemática Cb/Cr Rec.709 que el vectorscopio y las ruedas (130.4°; los 123° habituales corresponden al U/V analógico de Rec.601). Se puede ocultar.
 - **Match con una imagen de referencia:** cargás una foto o un frame con el look que buscás y obtenés un punto de partida. Es una etapa al comienzo de la parte creativa, en Oklab: una curva de luminancia monótona y suave que acerca el histograma de tus frames al de la referencia, y un ajuste de color por sombras, medios y altas que acerca media y covarianza. Usa todos los frames cargados, tiene intensidad, on/off y "proteger piel". La referencia se convierte a Rec.709 γ2.4 según su perfil ICC (sRGB, Display P3, Adobe RGB…); si no trae perfil, se asume sRGB.
-- **Presets:** se importan y exportan como JSON con solo los parámetros que difieren del neutro (sin imágenes ni LUTs). Al importar, cada valor se valida contra el esquema y la app dice qué parámetro está mal y por qué. Trae tres presets de ejemplo.
+- **Presets:** guardan los ajustes del look sobre la imagen ya convertida a Rec.709 (sin la entrada, la conversión, el match, imágenes ni LUTs), en un JSON con solo los parámetros que difieren del neutro; aplicar uno no toca la conversión. Al importar, cada valor se valida contra el esquema y la app dice qué parámetro está mal y por qué. Trae tres presets de ejemplo; el elegido queda marcado en el selector (y como "modificado" si después se toca algo).
 - **Documento para IA:** [`docs/PARAMETROS_PARA_IA.md`](docs/PARAMETROS_PARA_IA.md) describe el pipeline, todos los parámetros, el formato de preset (con JSON Schema), pautas para armar looks y los presets de ejemplo. Se genera desde el esquema de parámetros (`src/params/schema.ts`) con `npm run docs:params`, y un test falla si quedó desactualizado.
 - **Modo "Probar .cube":** apila varios LUTs con orden, opacidad y on/off, y los compara con el original con una cortina.
 - **Scopes:** waveform, parade RGB, vectorscopio e histograma, calculados sobre la imagen completa.
 - **Proyectos:** se guardan en JSON. Hay deshacer/rehacer y atajos de teclado.
+- **Sliders con el color de su efecto:** los que tocan el color (temperatura, tinte, saturaciones, tonos y cantidades del split toning, ajustes de las correcciones por color) muestran en la barra un degradé con el color que da cada valor; los de luminancia van de oscuro a claro. Los avisos informativos se cierran solos a los 4 s y las advertencias a los 8 s; los errores quedan hasta cerrarlos.
 - **Validación contra DaVinci:** la app genera un chart TIFF de 16 bits. Lo pasás por DaVinci con el LUT exportado y la app compara píxel a píxel el resultado con lo que ella misma calcula.
 
 ## Cómo funciona
@@ -59,6 +60,18 @@ docker compose up -d --build
 ```
 
 Queda en http://localhost:8173. Para detenerla: `docker compose down`.
+
+**Exportar directo a una carpeta (por ejemplo, la de LUTs de DaVinci Resolve).** Copiá `.env.example` a `.env` y
+poné la carpeta en `LUT_EXPORT_DIR`:
+
+```bash
+LUT_EXPORT_DIR="/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/mariano"
+```
+
+Después `docker compose up -d --build`. Docker monta esa carpeta y "Exportar .cube" escribe el archivo ahí (si ya
+hay uno con el mismo nombre, lo reemplaza). En Resolve, para que aparezca sin reiniciar: Project Settings → Color
+Management → Lookup Tables → Update Lists. Sin `LUT_EXPORT_DIR` (o con `npm run dev`), el .cube se descarga con el
+navegador como siempre. Los proyectos y presets se siguen descargando.
 
 ## Validar un LUT en DaVinci
 

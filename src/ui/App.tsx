@@ -98,7 +98,7 @@ export function App() {
         if (k === 'z' && !e.shiftKey) st.undo()
         else if ((k === 'z' && e.shiftKey) || k === 'y') st.redo()
         else if (k === 's') saveProject()
-        else if (k === 'e' && st.mode === 'studio') exportCube()
+        else if (k === 'e' && st.mode === 'studio') void exportCube()
         else if (k === 'o' && e.shiftKey) void openProject()
         else return
         e.preventDefault()

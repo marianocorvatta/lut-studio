@@ -16,12 +16,15 @@ export function ParamSlider({
   label,
   format,
   disabled,
+  track,
 }: {
   id: string
   /** etiqueta corta para la interfaz (por defecto, el nombre del esquema) */
   label?: string
   format?: (v: number) => string
   disabled?: boolean
+  /** degradé de la barra; recibe el rango del esquema */
+  track?: (min: number, max: number) => string
 }) {
   const p = numberParam(id)
   const value = useApp((s) => getParam(s.params, id) as number)
@@ -35,6 +38,7 @@ export function ParamSlider({
       step={p.step}
       def={p.neutral}
       disabled={disabled}
+      track={track?.(p.min, p.max)}
       format={format ?? autoFormat(p.unit, p.step)}
       title={p.description}
       onChange={(v) => update((pp) => setParam(pp, id, v))}
