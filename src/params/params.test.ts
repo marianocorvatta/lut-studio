@@ -54,7 +54,7 @@ describe('esquema de parámetros', () => {
 
 describe('presets', () => {
   it('los presets de ejemplo son válidos, cambian el look y van y vuelven sin cambios', () => {
-    expect(EXAMPLE_PRESETS.map((p) => p.name)).toEqual(['Neutro con más contraste', 'Teal and orange suave', 'Cálido cinematográfico respetando piel'])
+    expect(EXAMPLE_PRESETS.map((p) => p.name)).toEqual(['Neutro con más contraste', 'Teal and orange suave', 'Cálido cinematográfico respetando piel', 'Atardecer cálido en la piel', 'Atardecer por separación de color', 'Película cálida tipo Portra', 'Natural documental', 'Luminoso y pastel', 'Nostalgia Super 8', 'Invierno o día nublado', 'Blanco y negro con contraste'])
     for (const p of EXAMPLE_PRESETS) {
       const r = parsePreset(JSON.stringify(p))
       if (!r.ok) throw new Error(`${p.name}: ${r.errors.join('; ')}`)
