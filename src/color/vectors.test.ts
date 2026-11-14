@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { evalGrade, prepareGrade, wheelDir } from './grade'
 import { defaultParams, type WheelName } from './params'
-import { cbcrAngle, hueColor, LUMA_709, REC709_VECTORS, rgbToCbCr } from './vectors'
+import { cbcrAngle, cbcrToCanvas, hueColor, LUMA_709, REC709_VECTORS, rgbToCbCr, SKIN_LINE_ANGLE, skinLineEnd, YIQ, yiqIAxis } from './vectors'
 
 const angleDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180)
 
@@ -65,5 +65,39 @@ describe('vectores Rec.709 (ruedas y vectorscopio)', () => {
         expect(Math.hypot(cb, cr)).toBeGreaterThan(0.01)
         expect(angleDiff(cbcrAngle(cb, cr), v.angle), `${wheel} → ${v.name}`).toBeLessThan(tol)
       }
+  })
+})
+
+describe('línea de tono de piel', () => {
+  it('es el eje I de YIQ: Y = 0, Q = 0, I > 0', () => {
+    const d = yiqIAxis()
+    const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    expect(dot(YIQ.Y, d)).toBeCloseTo(0, 12)
+    expect(dot(YIQ.Q, d)).toBeCloseTo(0, 12)
+    expect(dot(YIQ.I, d)).toBeGreaterThan(0)
+  })
+
+  it('en el U/V analógico da los 123° clásicos; con la matemática Rec.709 del vectorscopio, 130.4°', () => {
+    const d = yiqIAxis()
+    const y601 = 0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]
+    expect(angleDiff(cbcrAngle(0.492 * (d[2] - y601), 0.877 * (d[0] - y601)), 123)).toBeLessThan(0.5)
+    expect(SKIN_LINE_ANGLE).toBeCloseTo(130.45, 1)
+    // misma dirección que la de un color de piel típico desplazado desde un gris, medido con rgbToCbCr
+    const k = 0.4
+    const [cb, cr] = rgbToCbCr([0.5 + k * d[0], 0.5 + k * d[1], 0.5 + k * d[2]])
+    expect(angleDiff(cbcrAngle(cb, cr), SKIN_LINE_ANGLE)).toBeLessThan(1e-9)
+  })
+
+  it('el ángulo dibujado coincide con el calculado y llega del centro al borde', () => {
+    for (const S of [256, 300]) {
+      const [x, y] = skinLineEnd(S)
+      const drawn = cbcrAngle(x - S / 2, S / 2 - y) // canvas: y hacia abajo
+      expect(angleDiff(drawn, SKIN_LINE_ANGLE)).toBeLessThan(1e-9)
+      expect(Math.hypot(x - S / 2, y - S / 2)).toBeCloseTo(S / 2, 9)
+    }
+    // los objetivos de color usan la misma proyección
+    const r = REC709_VECTORS[0]
+    const [x, y] = cbcrToCanvas(r.cb, r.cr, 256)
+    expect(angleDiff(cbcrAngle(x - 128, 128 - y), r.angle)).toBeLessThan(1e-9)
   })
 })

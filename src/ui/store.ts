@@ -99,6 +99,8 @@ interface AppState {
   /** incluir los LUTs dentro del JSON al guardar el proyecto */
   embedLuts: boolean
   scopeMode: ScopeMode | 'off'
+  /** línea de tono de piel en el vectorscopio */
+  skinLine: boolean
   /** qué se exporta: el LUT completo (log -> Rec.709 + look) o solo el look (Rec.709 -> Rec.709) */
   exportKind: 'full' | 'look'
   /** preview "como lo vería con solo el look": conversión y después el LUT del look, en cadena */
@@ -143,6 +145,7 @@ interface AppState {
   setScopeMode: (m: ScopeMode | 'off') => void
   setAlerts: (patch: Partial<AlertSettings>) => void
   setExportKind: (k: 'full' | 'look') => void
+  setSkinLine: (v: boolean) => void
   setPreviewLookOnly: (v: boolean) => void
   setDiagnostics: (d: Diagnostics | null) => void
   setDiagBusy: (b: boolean) => void
@@ -193,6 +196,7 @@ export const useApp = create<AppState>((set, get) => ({
   missingLuts: { conversion: null, creative: null },
   embedLuts: false,
   scopeMode: 'waveform',
+  skinLine: true,
   exportKind: 'full',
   previewLookOnly: false,
   alerts: {
@@ -293,6 +297,7 @@ export const useApp = create<AppState>((set, get) => ({
   setScopeMode: (scopeMode) => set({ scopeMode }),
   setAlerts: (patch) => set((s) => ({ alerts: { ...s.alerts, ...patch } })),
   setExportKind: (exportKind) => set({ exportKind }),
+  setSkinLine: (skinLine) => set({ skinLine }),
   setPreviewLookOnly: (previewLookOnly) => set({ previewLookOnly }),
   setDiagnostics: (diagnostics) => set({ diagnostics }),
   setDiagBusy: (diagBusy) => set({ diagBusy }),

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { REC709_VECTORS } from '../color/vectors'
+import { cbcrToCanvas, REC709_VECTORS, SKIN_LINE_ANGLE, skinLineEnd } from '../color/vectors'
 import type { Renderer } from '../gpu/renderer'
 import { WAVE_MAX, WAVE_MIN, type ScopeImage, type ScopeMode } from '../gpu/scopes'
 import { useApp } from './store'
@@ -60,7 +60,7 @@ function waveGrid(ctx: CanvasRenderingContext2D, W: number, H: number, thirds: b
   }
 }
 
-function vectorGrid(ctx: CanvasRenderingContext2D, S: number) {
+function vectorGrid(ctx: CanvasRenderingContext2D, S: number, skin: boolean) {
   const c = S / 2
   ctx.strokeStyle = 'rgba(150,150,150,0.35)'
   ctx.fillStyle = 'rgba(170,170,170,0.85)'
@@ -74,19 +74,22 @@ function vectorGrid(ctx: CanvasRenderingContext2D, S: number) {
   ctx.stroke()
   // objetivos de las primarias y secundarias Rec.709 al 75 % (misma geometría que las ruedas)
   for (const v of REC709_VECTORS) {
-    const x = c + v.cb * 0.75 * S
-    const y = c - v.cr * 0.75 * S
+    const [x, y] = cbcrToCanvas(v.cb * 0.75, v.cr * 0.75, S)
     ctx.strokeRect(x - 4, y - 4, 8, 8)
     ctx.fillText(v.name, x + 6, y + 3)
   }
-  // línea de tono de piel (eje I, ~123° desde +Cb)
-  const a = (123 * Math.PI) / 180
-  ctx.setLineDash([3, 3])
-  ctx.beginPath()
-  ctx.moveTo(c, c)
-  ctx.lineTo(c + Math.cos(a) * c, c - Math.sin(a) * c)
-  ctx.stroke()
-  ctx.setLineDash([])
+  // línea de tono de piel: eje I de YIQ calculado con la misma matemática Cb/Cr (≈130.4°), del centro al borde
+  if (skin) {
+    const [x, y] = skinLineEnd(S)
+    ctx.save()
+    ctx.strokeStyle = 'rgba(190,190,190,0.4)'
+    ctx.lineWidth = 0.75
+    ctx.beginPath()
+    ctx.moveTo(c, c)
+    ctx.lineTo(x, y)
+    ctx.stroke()
+    ctx.restore()
+  }
 }
 
 function drawHistogram(ctx: CanvasRenderingContext2D, s: ScopeImage, W: number, H: number) {
@@ -121,6 +124,7 @@ export function ScopesPanel() {
   const image = useApp((s) => s.image)
   const frameCount = useApp((s) => s.frames.length)
   const appMode = useApp((s) => s.mode)
+  const skinLine = useApp((s) => s.skinLine)
   const allFrames = useApp((s) => s.scopesAllFrames) && frameCount > 1 && appMode !== 'validate'
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [precise, setPrecise] = useState(true)
@@ -149,7 +153,7 @@ export function ScopesPanel() {
       canvas.width = s.width
       canvas.height = s.height
       drawDensity(ctx, s, mode === 'parade')
-      if (mode === 'vectorscope') vectorGrid(ctx, s.width)
+      if (mode === 'vectorscope') vectorGrid(ctx, s.width, useApp.getState().skinLine)
       else waveGrid(ctx, s.width, s.height, mode === 'parade')
     }
     const onRender = (r: Renderer) => {
@@ -164,7 +168,7 @@ export function ScopesPanel() {
       viewerApi.listeners.delete(onRender)
       clearTimeout(timer)
     }
-  }, [mode, image, allFrames, frameCount])
+  }, [mode, image, allFrames, frameCount, skinLine])
 
   return (
     <div className={mode === 'off' ? 'scopes scopes--off' : 'scopes'}>
@@ -179,6 +183,12 @@ export function ScopesPanel() {
             Ocultar
           </button>
         </div>
+        {mode === 'vectorscope' && (
+          <label className="check" title={`Eje I de YIQ, la referencia clásica de tono de piel (${SKIN_LINE_ANGLE.toFixed(1)}° en este vectorscopio Rec.709)`}>
+            <input type="checkbox" checked={skinLine} onChange={(e) => useApp.getState().setSkinLine(e.target.checked)} />
+            <span>Línea de piel</span>
+          </label>
+        )}
         {mode !== 'off' && frameCount > 1 && (
           <label className="check" title="Acumula en el scope todos los frames cargados">
             <input type="checkbox" checked={allFrames} onChange={(e) => useApp.getState().setScopesAllFrames(e.target.checked)} />

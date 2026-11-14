@@ -67,3 +67,40 @@ export function cssRgb(c: RGB3, alpha = 1): string {
   const b = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255)
   return alpha === 1 ? `rgb(${b(c[0])} ${b(c[1])} ${b(c[2])})` : `rgb(${b(c[0])} ${b(c[1])} ${b(c[2])} / ${alpha})`
 }
+
+/**
+ * Eje I de YIQ (NTSC, FCC): la dirección RGB con Y = 0 y Q = 0, es decir Y × Q, con el signo que da I > 0.
+ * Es la referencia clásica de tono de piel. Proyectada con la misma matemática Cb/Cr Rec.709 que el vectorscopio
+ * y las ruedas da ≈ 130.4°; los "123°" habituales son los del U/V analógico (Rec.601).
+ */
+export const YIQ = {
+  Y: [0.299, 0.587, 0.114] as RGB3,
+  I: [0.596, -0.274, -0.322] as RGB3,
+  Q: [0.211, -0.523, 0.312] as RGB3,
+}
+
+export function yiqIAxis(): RGB3 {
+  const [a, b] = [YIQ.Y, YIQ.Q]
+  const d: RGB3 = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+  const i = YIQ.I[0] * d[0] + YIQ.I[1] * d[1] + YIQ.I[2] * d[2]
+  return i < 0 ? [-d[0], -d[1], -d[2]] : d
+}
+
+/** Ángulo de la línea de piel en el vectorscopio de la app (grados, antihorario desde +Cb). */
+export const SKIN_LINE_ANGLE = (() => {
+  const d = yiqIAxis()
+  // dirección (no color): Cb/Cr de un desplazamiento d desde cualquier gris
+  const y = LUMA_709[0] * d[0] + LUMA_709[1] * d[1] + LUMA_709[2] * d[2]
+  return cbcrAngle((d[2] - y) / CB_DIV, (d[0] - y) / CR_DIV)
+})()
+
+/** Punto (cb, cr) del plano en un canvas cuadrado de lado S: centro en S/2, +Cb a la derecha, +Cr arriba. */
+export function cbcrToCanvas(cb: number, cr: number, S: number): [number, number] {
+  return [S / 2 + cb * S, S / 2 - cr * S]
+}
+
+/** Extremo de la línea de piel, del centro al borde del círculo (radio S/2). */
+export function skinLineEnd(S: number): [number, number] {
+  const a = (SKIN_LINE_ANGLE * Math.PI) / 180
+  return cbcrToCanvas(Math.cos(a) * 0.5, Math.sin(a) * 0.5, S)
+}

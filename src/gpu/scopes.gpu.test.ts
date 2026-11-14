@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { prepare } from '../color/pipeline'
 import { defaultParams } from '../color/params'
-import { cbcrAngle, REC709_VECTORS } from '../color/vectors'
+import { cbcrAngle, REC709_VECTORS, SKIN_LINE_ANGLE, yiqIAxis } from '../color/vectors'
 import type { FloatImage } from '../io/image'
 import { Renderer } from './renderer'
 import { WAVE_MAX, WAVE_MIN } from './scopes'
@@ -86,6 +86,26 @@ describe('scopes en GPU', () => {
       const got = cbcrAngle(sx / n, sy / n)
       expect(Math.abs(((got - v.angle + 540) % 360) - 180), v.name).toBeLessThan(1.5)
     }
+    r.dispose()
+  })
+
+  it('vectorscopio: un color sobre el eje I de YIQ cae sobre la línea de piel', () => {
+    const r = new Renderer(makeCanvas(64, 64))
+    const d = yiqIAxis()
+    r.setImage(solidImage(32, 16, () => [0.5 + 0.5 * d[0], 0.5 + 0.5 * d[1], 0.5 + 0.5 * d[2]]))
+    r.setLayers([])
+    const vs = r.computeScope('vectorscope')!
+    let sx = 0
+    let sy = 0
+    let n = 0
+    for (let y = 0; y < vs.height; y++)
+      for (let x = 0; x < vs.width; x++) {
+        const v = vs.data[(y * vs.width + x) * 4]
+        sx += v * (x + 0.5 - vs.width / 2)
+        sy += v * (y + 0.5 - vs.height / 2)
+        n += v
+      }
+    expect(Math.abs(((cbcrAngle(sx / n, sy / n) - SKIN_LINE_ANGLE + 540) % 360) - 180)).toBeLessThan(1)
     r.dispose()
   })
 })

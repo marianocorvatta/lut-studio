@@ -13,7 +13,7 @@ describe('chart de prueba', () => {
     expect([img.width, img.height, img.bitDepth]).toEqual([CHART_W, CHART_H, 16])
     expect(img.hasICC).toBe(false)
     expect(img.data).toEqual(chartImage().data)
-  })
+  }, 20_000) // 1920x1080 en 16 bits: ~1.5 s solo, más con todos los tests en paralelo
 
   it('contiene negro, blanco, los nodos de un LUT 33 y colores fuera del eje neutro', () => {
     const u = generateChart()
