@@ -8,6 +8,7 @@ import { exportCube, handleDroppedFiles, openImage, openProject, saveProject } f
 import { useApp, type AppMode } from './store'
 import { useDiagnostics } from './diagnostics'
 import { FrameBar } from './FrameBar'
+import { CollapseIcon, ExpandIcon, SidebarIcon } from './icons'
 import { ScopesPanel } from './ScopesPanel'
 import { StudioPanel } from './StudioPanel'
 import { TestPanel } from './TestPanel'
@@ -41,6 +42,8 @@ export function App() {
   const conversionLut = useApp((s) => s.conversionLut)
   const creativeLut = useApp((s) => s.creativeLut)
   const lutSize = useApp((s) => s.lutSize)
+  const sidebarOpen = useApp((s) => s.sidebarOpen)
+  const viewerMax = useApp((s) => s.viewerMax)
 
   const prepared = useMemo(
     () => prepare(params, { conversionLut: conversionLut?.lut ?? null, creativeLut: creativeLut?.lut ?? null }, interpolation),
@@ -104,6 +107,16 @@ export function App() {
         case 'f':
           st.requestFit()
           break
+        case 'p':
+          st.setSidebarOpen(!st.sidebarOpen)
+          break
+        case 'm':
+          st.setViewerMax(!st.viewerMax)
+          break
+        case 'escape':
+          if (!st.viewerMax) return
+          st.setViewerMax(false)
+          break
         case 'g':
           if (st.mode !== 'validate' && (st.gridView || st.frames.length > 1)) st.setGridView(!st.gridView)
           break
@@ -151,7 +164,7 @@ export function App() {
     )
 
   return (
-    <div className="app">
+    <div className={['app', sidebarOpen ? '' : 'app--noside', viewerMax ? 'app--max' : ''].filter(Boolean).join(' ')}>
       <header className="topbar">
         <div className="brand">LUT Studio</div>
         <nav className="tabs">
@@ -205,6 +218,25 @@ export function App() {
               Antes
             </button>
           </div>
+          <div className="row row--tight">
+            <button
+              className={sidebarOpen ? 'icon icon--thin on' : 'icon icon--thin'}
+              onClick={() => useApp.getState().setSidebarOpen(!sidebarOpen)}
+              title={sidebarOpen ? 'Ocultar el panel de controles (P)' : 'Mostrar el panel de controles (P)'}
+              aria-label={sidebarOpen ? 'Ocultar el panel de controles' : 'Mostrar el panel de controles'}
+              aria-pressed={sidebarOpen}
+            >
+              <SidebarIcon open={sidebarOpen} />
+            </button>
+            <button
+              className="icon icon--thin"
+              onClick={() => useApp.getState().setViewerMax(true)}
+              title="Ver la imagen a toda la ventana (M) · Esc para volver"
+              aria-label="Ver la imagen a toda la ventana"
+            >
+              <ExpandIcon />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -219,6 +251,16 @@ export function App() {
             <Viewer layers={layers} computeOutput={computeOutput} />
           )}
           <ScopesPanel />
+          {viewerMax && (
+            <button
+              className="icon icon--thin stage__restore"
+              onClick={() => useApp.getState().setViewerMax(false)}
+              title="Volver (M o Esc)"
+              aria-label="Salir de la vista a toda la ventana"
+            >
+              <CollapseIcon />
+            </button>
+          )}
           {busy && <div className="busy">{busy}</div>}
           <div className="notices">
             {notices.map((n) => (
@@ -242,7 +284,7 @@ export function App() {
               picker y del .cube no la incluyen. Usá la misma que el viewer de DaVinci.
             </p>
             <p className="keys">
-              <kbd>O</kbd> abrir · <kbd>S</kbd> cortina · <kbd>B</kbd> antes · <kbd>F</kbd> ajustar · <kbd>G</kbd> grilla · <kbd>1</kbd> 100% ·{' '}
+              <kbd>O</kbd> abrir · <kbd>S</kbd> cortina · <kbd>B</kbd> antes · <kbd>F</kbd> ajustar · <kbd>G</kbd> grilla · <kbd>P</kbd> panel · <kbd>M</kbd> imagen a toda la ventana · <kbd>1</kbd> 100% ·{' '}
               <kbd>T</kbd> interpolación · <kbd>⌘Z</kbd> deshacer · <kbd>⇧⌘Z</kbd> rehacer · <kbd>⌘S</kbd> guardar proyecto ·{' '}
               <kbd>⇧⌘O</kbd> abrir proyecto · <kbd>⌘E</kbd> exportar .cube · rueda: zoom · arrastrar: mover
             </p>

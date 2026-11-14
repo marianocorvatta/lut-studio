@@ -212,6 +212,7 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
   useEffect(() => {
     const r = rendererRef.current
     if (!r || !fitNonce) return
+    r.resize() // el visor pudo cambiar de tamaño (panel oculto, imagen a toda la ventana)
     r.fit()
     requestRender()
   }, [fitNonce, requestRender])

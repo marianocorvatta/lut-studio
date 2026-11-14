@@ -134,6 +134,10 @@ interface AppState {
   notices: Notice[]
   gpuError: string | null
   busy: string | null
+  /** panel lateral de controles visible */
+  sidebarOpen: boolean
+  /** imagen a toda la ventana del navegador (sin barras ni paneles) */
+  viewerMax: boolean
   /** contadores para pedirle acciones al viewer */
   fitNonce: number
   oneToOneNonce: number
@@ -189,11 +193,30 @@ interface AppState {
   dismissNotice: (id: number) => void
   setGpuError: (e: string | null) => void
   setBusy: (b: string | null) => void
+  setSidebarOpen: (v: boolean) => void
+  setViewerMax: (v: boolean) => void
   requestFit: () => void
   requestOneToOne: () => void
 }
 
 let seq = 1
+
+/** Preferencias de este navegador (comodidad: si el almacenamiento no está disponible, se usan los valores por defecto). */
+function readPref(key: string, def: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key)
+    return v === null ? def : v === '1'
+  } catch {
+    return def
+  }
+}
+function writePref(key: string, v: boolean): void {
+  try {
+    localStorage.setItem(key, v ? '1' : '0')
+  } catch {
+    /* sin almacenamiento: no se recuerda */
+  }
+}
 
 const activeImage = (frames: Frame[], id: string | null) => frames.find((f) => f.id === id)?.image ?? null
 
@@ -253,6 +276,8 @@ export const useApp = create<AppState>((set, get) => ({
   notices: [],
   gpuError: null,
   busy: null,
+  sidebarOpen: readPref('lut-studio.sidebar', true),
+  viewerMax: false,
   fitNonce: 0,
   oneToOneNonce: 0,
 
@@ -361,6 +386,12 @@ export const useApp = create<AppState>((set, get) => ({
   dismissNotice: (id) => set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
   setGpuError: (gpuError) => set({ gpuError }),
   setBusy: (busy) => set({ busy }),
+  setSidebarOpen: (sidebarOpen) => {
+    writePref('lut-studio.sidebar', sidebarOpen)
+    // la imagen se reajusta al nuevo tamaño del visor
+    set((s) => ({ sidebarOpen, fitNonce: s.fitNonce + 1 }))
+  },
+  setViewerMax: (viewerMax) => set((s) => ({ viewerMax, fitNonce: s.fitNonce + 1 })),
   requestFit: () => set((s) => ({ fitNonce: s.fitNonce + 1 })),
   requestOneToOne: () => set((s) => ({ oneToOneNonce: s.oneToOneNonce + 1 })),
 }))

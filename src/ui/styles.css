@@ -902,3 +902,62 @@ input[type='radio'] {
   flex: 1;
   min-width: 0;
 }
+
+/* Campos del panel: que se achiquen en lugar de empujar (sin scroll horizontal) */
+.side .panel {
+  overflow-x: hidden;
+}
+.field--block {
+  min-width: 0;
+}
+.field--block > span:first-child {
+  flex: none;
+}
+.field--block select,
+.field--block input[type='text'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+/* Botones de ícono fino */
+button.icon--thin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 5px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+button.icon--thin:hover:not(:disabled) {
+  color: var(--strong);
+  background: var(--control);
+}
+button.icon--thin.on {
+  color: var(--text);
+}
+
+/* Panel oculto e imagen a toda la ventana */
+.app--noside .side,
+.app--max .side,
+.app--max .topbar,
+.app--max .frames,
+.app--max .scopes,
+.app--max .viewer__status {
+  display: none;
+}
+.stage__restore {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  background: rgba(20, 20, 20, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.stage__restore:hover {
+  opacity: 1;
+}
