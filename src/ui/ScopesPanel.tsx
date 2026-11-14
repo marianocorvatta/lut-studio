@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { cbcrToCanvas, REC709_VECTORS, SKIN_LINE_ANGLE, skinLineEnd } from '../color/vectors'
+import type { Qualifier } from '../color/qualifiers'
+import { cbcrToCanvas, lchToCbCr, REC709_VECTORS, selectionOutline, SKIN_LINE_ANGLE, skinLineEnd } from '../color/vectors'
 import type { Renderer } from '../gpu/renderer'
 import { WAVE_MAX, WAVE_MIN, type ScopeImage, type ScopeMode } from '../gpu/scopes'
 import { useApp } from './store'
@@ -60,7 +61,7 @@ function waveGrid(ctx: CanvasRenderingContext2D, W: number, H: number, thirds: b
   }
 }
 
-function vectorGrid(ctx: CanvasRenderingContext2D, S: number, skin: boolean) {
+function vectorGrid(ctx: CanvasRenderingContext2D, S: number, skin: boolean, quals: Qualifier[]) {
   const c = S / 2
   ctx.strokeStyle = 'rgba(150,150,150,0.35)'
   ctx.fillStyle = 'rgba(170,170,170,0.85)'
@@ -77,6 +78,32 @@ function vectorGrid(ctx: CanvasRenderingContext2D, S: number, skin: boolean) {
     const [x, y] = cbcrToCanvas(v.cb * 0.75, v.cr * 0.75, S)
     ctx.strokeRect(x - 4, y - 4, 8, 8)
     ctx.fillText(v.name, x + 6, y + 3)
+  }
+  // zonas de las correcciones por color: contorno de la selección (lleno) y con la suavidad (punteado)
+  for (const q of quals) {
+    if (!q.enabled) continue
+    ctx.save()
+    ctx.strokeStyle = 'rgba(230,230,230,0.7)'
+    ctx.lineWidth = 1
+    for (const extra of [false, true]) {
+      ctx.setLineDash(extra ? [2, 3] : [])
+      ctx.globalAlpha = extra ? 0.5 : 0.9
+      ctx.beginPath()
+      selectionOutline(q, extra).forEach(([cb, cr], i) => {
+        const [x, y] = cbcrToCanvas(cb, cr, S)
+        if (i) ctx.lineTo(x, y)
+        else ctx.moveTo(x, y)
+      })
+      ctx.closePath()
+      ctx.stroke()
+    }
+    if (q.name) {
+      const [x, y] = cbcrToCanvas(...lchToCbCr(q.luma.center, q.chroma.center + q.chroma.width, q.hue.center), S)
+      ctx.globalAlpha = 0.9
+      ctx.fillStyle = 'rgba(230,230,230,0.9)'
+      ctx.fillText(q.name, x + 4, y - 4)
+    }
+    ctx.restore()
   }
   // línea de tono de piel: eje I de YIQ calculado con la misma matemática Cb/Cr (≈130.4°), del centro al borde
   if (skin) {
@@ -125,6 +152,7 @@ export function ScopesPanel() {
   const frameCount = useApp((s) => s.frames.length)
   const appMode = useApp((s) => s.mode)
   const skinLine = useApp((s) => s.skinLine)
+  const quals = useApp((s) => s.params.qualifiers)
   const allFrames = useApp((s) => s.scopesAllFrames) && frameCount > 1 && appMode !== 'validate'
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [precise, setPrecise] = useState(true)
@@ -153,7 +181,7 @@ export function ScopesPanel() {
       canvas.width = s.width
       canvas.height = s.height
       drawDensity(ctx, s, mode === 'parade')
-      if (mode === 'vectorscope') vectorGrid(ctx, s.width, useApp.getState().skinLine)
+      if (mode === 'vectorscope') vectorGrid(ctx, s.width, useApp.getState().skinLine, useApp.getState().params.qualifiers)
       else waveGrid(ctx, s.width, s.height, mode === 'parade')
     }
     const onRender = (r: Renderer) => {
@@ -168,7 +196,7 @@ export function ScopesPanel() {
       viewerApi.listeners.delete(onRender)
       clearTimeout(timer)
     }
-  }, [mode, image, allFrames, frameCount, skinLine])
+  }, [mode, image, allFrames, frameCount, skinLine, quals])
 
   return (
     <div className={mode === 'off' ? 'scopes scopes--off' : 'scopes'}>

@@ -9,6 +9,7 @@ import { AlertsPanel } from './AlertsPanel'
 import { GradePanel } from './GradePanel'
 import { exportNames } from './exportNames'
 import { MatchPanel } from './MatchPanel'
+import { QualifierPanel } from './QualifierPanel'
 import { inputIsNeutral } from '../color/variants'
 import { useApp } from './store'
 
@@ -196,6 +197,8 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
       <MatchPanel />
 
       <GradePanel />
+
+      <QualifierPanel />
 
       <Section title="LUT creativo" onReset={() => update((p) => void (p.creativeLut = def.creativeLut))}>
         <LutSlot

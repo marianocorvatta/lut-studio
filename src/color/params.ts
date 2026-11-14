@@ -3,6 +3,7 @@
  * Los LUTs externos (conversión y creativo) van aparte, en PipelineResources.
  */
 import { defaultMatch, type MatchParams } from './match'
+import { MAX_QUALIFIERS, normalizeQualifier, type Qualifier } from './qualifiers'
 
 export type ConversionSource = 'lut' | 'formula'
 export type LutSize = 33 | 65
@@ -80,6 +81,8 @@ export interface LookParams {
   }
   /** etapa Match (al comienzo de la etapa creativa): el modelo calculado viaja con el look */
   match: MatchParams
+  /** correcciones por color (después de primarias, curvas y Oklab; antes del LUT creativo) */
+  qualifiers: Qualifier[]
 }
 
 export const DEFAULT_PIVOT = 0.435
@@ -110,6 +113,7 @@ export const defaultParams = (): LookParams => ({
   creativeLut: { enabled: true, intensity: 1 },
   output: { clamp: true },
   match: defaultMatch(),
+  qualifiers: [],
 })
 
 /** Completa un objeto de parámetros (por ejemplo, de un proyecto viejo) con los valores por defecto. */
@@ -125,5 +129,7 @@ export function normalizeParams(raw: unknown): LookParams {
     }
     return typeof r === typeof d ? r : d
   }
-  return merge(def, raw) as LookParams
+  const out = merge(def, raw) as LookParams
+  out.qualifiers = out.qualifiers.slice(0, MAX_QUALIFIERS).map(normalizeQualifier)
+  return out
 }

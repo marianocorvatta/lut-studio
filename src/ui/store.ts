@@ -134,6 +134,12 @@ interface AppState {
   notices: Notice[]
   gpuError: string | null
   busy: string | null
+  /** gotero activo: índice de la corrección por color que recibe el color tomado */
+  picking: number | null
+  /** lado del área que promedia el gotero, en píxeles (impar) */
+  eyedropperSize: number
+  /** vista de máscara de una corrección por color (solo pantalla) */
+  qualMaskView: number | null
   /** panel lateral de controles visible */
   sidebarOpen: boolean
   /** imagen a toda la ventana del navegador (sin barras ni paneles) */
@@ -193,6 +199,9 @@ interface AppState {
   dismissNotice: (id: number) => void
   setGpuError: (e: string | null) => void
   setBusy: (b: string | null) => void
+  setPicking: (i: number | null) => void
+  setEyedropperSize: (n: number) => void
+  setQualMaskView: (i: number | null) => void
   setSidebarOpen: (v: boolean) => void
   setViewerMax: (v: boolean) => void
   requestFit: () => void
@@ -276,6 +285,9 @@ export const useApp = create<AppState>((set, get) => ({
   notices: [],
   gpuError: null,
   busy: null,
+  picking: null,
+  eyedropperSize: 5,
+  qualMaskView: null,
   sidebarOpen: readPref('lut-studio.sidebar', true),
   viewerMax: false,
   fitNonce: 0,
@@ -386,6 +398,9 @@ export const useApp = create<AppState>((set, get) => ({
   dismissNotice: (id) => set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
   setGpuError: (gpuError) => set({ gpuError }),
   setBusy: (busy) => set({ busy }),
+  setPicking: (picking) => set({ picking }),
+  setEyedropperSize: (eyedropperSize) => set({ eyedropperSize }),
+  setQualMaskView: (qualMaskView) => set({ qualMaskView }),
   setSidebarOpen: (sidebarOpen) => {
     writePref('lut-studio.sidebar', sidebarOpen)
     // la imagen se reajusta al nuevo tamaño del visor

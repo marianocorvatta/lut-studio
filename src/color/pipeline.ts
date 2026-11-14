@@ -10,6 +10,7 @@
 import { appleLogDecode, appleLogEncode, AWG_TO_REC709, formulaToneMap, inputMatrix } from './appleLog'
 import { evalGrade, prepareGrade, type PreparedGrade } from './grade'
 import { evalMatch, prepareMatch, type PreparedMatch } from './match'
+import { evalQualifiers, maskWeight, prepareQualifier, prepareQualifiers, type PreparedQualifier } from './qualifiers'
 import type { Interpolation, Lut, Lut3D, RGB } from './lut'
 import { isIdentity3, mul3, type Mat3 } from './mat3'
 import { sampleLut } from './lut'
@@ -40,6 +41,14 @@ export interface Prepared {
   match: PreparedMatch | null
   /** etapa creativa (sobre Rec.709) */
   grade: PreparedGrade
+  /** correcciones por color activas, en orden (vacío = etapa apagada) */
+  quals: PreparedQualifier[]
+  /**
+   * Solo para el gotero y la vista de máscara (nunca en el LUT que se exporta): el pipeline se corta antes de la
+   * corrección `qualTarget` ('stop') o devuelve su peso en gris ('mask').
+   */
+  qualTarget: PreparedQualifier | null
+  qualMode: 'none' | 'stop' | 'mask'
   creativeLut: Lut | null
   creativeMix: number
   clamp: boolean
@@ -47,7 +56,12 @@ export interface Prepared {
   issues: string[]
 }
 
-export function prepare(params: LookParams, res: PipelineResources, interp: Interpolation): Prepared {
+export interface PrepareOptions {
+  /** índice (en params.qualifiers) de la corrección donde cortar: gotero ('stop') o máscara ('mask') */
+  qualifier?: { index: number; mode: 'stop' | 'mask' }
+}
+
+export function prepare(params: LookParams, res: PipelineResources, interp: Interpolation, opts: PrepareOptions = {}): Prepared {
   const issues: string[] = []
   let convMode: Prepared['convMode'] = CONV_OFF
   if (params.conversion.enabled) {
@@ -71,6 +85,7 @@ export function prepare(params: LookParams, res: PipelineResources, interp: Inte
     formulaMatrix: inputOn ? mul3(AWG_TO_REC709, inM) : AWG_TO_REC709,
     match: prepareMatch(params.match),
     grade: prepareGrade(params),
+    ...prepareQualStage(params, opts),
     creativeLut: creativeOn ? res.creativeLut : null,
     creativeMix: creativeOn ? params.creativeLut.intensity : 0,
     clamp: params.output.clamp,
@@ -78,10 +93,47 @@ export function prepare(params: LookParams, res: PipelineResources, interp: Inte
   }
 }
 
+function prepareQualStage(params: LookParams, opts: PrepareOptions): Pick<Prepared, 'quals' | 'qualTarget' | 'qualMode'> {
+  const list = params.qualifiers ?? []
+  const q = opts.qualifier
+  if (!q || !list[q.index]) return { quals: prepareQualifiers(list), qualTarget: null, qualMode: 'none' }
+  return { quals: prepareQualifiers(list.slice(0, q.index)), qualTarget: prepareQualifier(list[q.index]), qualMode: q.mode }
+}
+
 const tmp: RGB = [0, 0, 0]
 
 /** Evalúa el pipeline completo para un color. Modifica y devuelve `c`. */
 export function evalPipeline(p: Prepared, c: RGB): RGB {
+  evalUntilQualifiers(p, c)
+
+  // 3b. Correcciones por color
+  if (p.qualMode !== 'none') {
+    evalQualifiers(p.quals, c)
+    if (p.qualMode === 'mask') c[0] = c[1] = c[2] = maskWeight(p.qualTarget!, c)
+    return c
+  }
+  if (p.quals.length) evalQualifiers(p.quals, c)
+
+  // 3c. LUT creativo con intensidad
+  if (p.creativeLut) {
+    sampleLut(p.creativeLut, c, p.interp, tmp)
+    const k = p.creativeMix
+    c[0] += (tmp[0] - c[0]) * k
+    c[1] += (tmp[1] - c[1]) * k
+    c[2] += (tmp[2] - c[2]) * k
+  }
+
+  // 4. Salida
+  if (p.clamp) {
+    c[0] = c[0] < 0 ? 0 : c[0] > 1 ? 1 : c[0]
+    c[1] = c[1] < 0 ? 0 : c[1] > 1 ? 1 : c[1]
+    c[2] = c[2] < 0 ? 0 : c[2] > 1 ? 1 : c[2]
+  }
+  return c
+}
+
+/** Entrada, conversión, match y etapa de primarias / curvas / Oklab: todo lo anterior a las correcciones por color. */
+function evalUntilQualifiers(p: Prepared, c: RGB): RGB {
   if (p.convMode === CONV_FORMULA) {
     // 1 + 2. Entrada y conversión por fórmula: decodificar, matriz (entrada + gamut), tone mapping, gamma 2.4
     const m = p.formulaMatrix
@@ -106,23 +158,9 @@ export function evalPipeline(p: Prepared, c: RGB): RGB {
     sampleLut(p.convLut!, c, p.interp, c)
   }
 
-  // 3. Etapa creativa: match con la referencia, correcciones estilo DaVinci y el LUT creativo con intensidad
+  // 3. Etapa creativa: match con la referencia y correcciones estilo DaVinci
   if (p.match) evalMatch(p.match, c)
   evalGrade(p.grade, c)
-  if (p.creativeLut) {
-    sampleLut(p.creativeLut, c, p.interp, tmp)
-    const k = p.creativeMix
-    c[0] += (tmp[0] - c[0]) * k
-    c[1] += (tmp[1] - c[1]) * k
-    c[2] += (tmp[2] - c[2]) * k
-  }
-
-  // 4. Salida
-  if (p.clamp) {
-    c[0] = c[0] < 0 ? 0 : c[0] > 1 ? 1 : c[0]
-    c[1] = c[1] < 0 ? 0 : c[1] > 1 ? 1 : c[1]
-    c[2] = c[2] < 0 ? 0 : c[2] > 1 ? 1 : c[2]
-  }
   return c
 }
 

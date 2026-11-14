@@ -3,6 +3,7 @@ import { hueSwatch } from '../color/oklab'
 import { defaultParams, type HueCurveName, type LookParams, type RgbCurveName, type WheelName } from '../color/params'
 import { ColorWheel } from './ColorWheel'
 import { Section, Slider } from './controls'
+import type { Qualifier } from '../color/qualifiers'
 import { CurveEditor } from './CurveEditor'
 import { useApp } from './store'
 
@@ -28,6 +29,34 @@ const HUE_CURVES: { id: HueCurveName; label: string; hint: string }[] = [
 ]
 
 /** Banda de tonos de baja croma (orientativa: no satura la interfaz). */
+/** Zonas de tono de las correcciones por color, sobre las curvas de tono (x = tono OkLCh en vueltas). */
+function QualifierBands({ quals }: { quals: Qualifier[] }) {
+  const rects = (from: number, to: number, key: string, opacity: number) => {
+    // el tono es periódico: una zona que cruza 0° se dibuja en dos partes
+    const a = from / 360
+    const b = to / 360
+    const parts: [number, number][] = b - a >= 1 ? [[0, 1]] : [[a - Math.floor(a), b - Math.floor(a)]]
+    const out: [number, number][] = []
+    for (const [x0, x1] of parts) {
+      if (x1 > 1) out.push([x0, 1], [0, x1 - 1])
+      else out.push([x0, x1])
+    }
+    return out.map(([x0, x1], i) => <rect key={`${key}${i}`} x={x0 * 280} y={0} width={(x1 - x0) * 280} height={172} fill="#e6e6e6" opacity={opacity} />)
+  }
+  return (
+    <g pointerEvents="none">
+      {quals
+        .filter((q) => q.enabled && q.hue.width < 180)
+        .map((q) => (
+          <g key={q.id}>
+            {rects(q.hue.center - q.hue.width - q.hue.soft, q.hue.center + q.hue.width + q.hue.soft, `${q.id}s`, 0.05)}
+            {rects(q.hue.center - q.hue.width, q.hue.center + q.hue.width, `${q.id}c`, 0.08)}
+          </g>
+        ))}
+    </g>
+  )
+}
+
 function HueBand() {
   const stops = Array.from({ length: 13 }, (_, i) => i / 12)
   return (
@@ -172,7 +201,14 @@ export function GradePanel() {
         <CurveEditor
           kind={hueTab === 'lumSat' ? 'lum' : 'hue'}
           points={params.hueCurves[hueTab]}
-          background={hueTab === 'lumSat' ? undefined : <HueBand />}
+          background={
+            hueTab === 'lumSat' ? undefined : (
+              <>
+                <QualifierBands quals={params.qualifiers} />
+                <HueBand />
+              </>
+            )
+          }
           onChange={(pts) => set((p) => void (p.hueCurves[hueTab] = pts))}
           onCommit={commit}
         />

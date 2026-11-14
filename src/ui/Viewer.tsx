@@ -4,6 +4,7 @@ import type { Prepared } from '../color/pipeline'
 import type { FloatImage } from '../io/image'
 import { GpuUnsupportedError } from '../gpu/gl'
 import { Renderer, type Rect, type RenderLayer } from '../gpu/renderer'
+import { pickQualifierColor } from './qualActions'
 import { useApp } from './store'
 
 /** Renderer activo, para acciones fuera del componente (exportar, scopes, diagnóstico). */
@@ -31,6 +32,8 @@ export interface ViewerProps {
     size: number
     /** preview "como lo vería con solo el look": la conversión y después el LUT del look, en cadena */
     lookOnly?: { conv: Prepared | null; look: Prepared } | null
+    /** vista de máscara de una corrección por color: el pipeline devuelve el peso en gris (solo pantalla) */
+    qualMask?: { prepared: Prepared; name: string } | null
   }
   /** imagen a mostrar en lugar de los frames del estado (pantalla de validación); sin grilla */
   image?: FloatImage | null
@@ -77,6 +80,7 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
   const split = useApp((s) => s.split)
   const fitNonce = useApp((s) => s.fitNonce)
   const alerts = useApp((s) => s.alerts)
+  const picking = useApp((s) => s.picking)
   const diagnostics = useApp((s) => s.diagnostics)
   const oneToOneNonce = useApp((s) => s.oneToOneNonce)
 
@@ -168,7 +172,8 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
       if (bake) {
         const full = r.bake(bake.prepared, bake.size)
         const lo = bake.lookOnly
-        if (lo) {
+        if (bake.qualMask) r.setLayers([{ lut: r.bakeAux('qual-mask', bake.qualMask.prepared, bake.size), opacity: 1 }])
+        else if (lo) {
           const chain = [lo.conv ? r.bakeAux('conv', lo.conv, bake.size) : null, r.bakeAux('look', lo.look, bake.size)]
           r.setLayers(chain.filter((l) => l !== null).map((lut) => ({ lut, opacity: 1 })))
         } else r.setLayers([{ lut: full, opacity: 1 }])
@@ -239,7 +244,9 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
     // En modo Estudio la salida es el LUT horneado (leído de la GPU) aplicado al píxel: lo mismo que hará DaVinci.
     const interp = useApp.getState().interpolation
     const output = bake
-      ? bake.lookOnly
+      ? bake.qualMask
+        ? sampleLut3D(r.readAux('qual-mask'), input, interp)
+        : bake.lookOnly
         ? sampleLut3D(r.readAux('look'), bake.lookOnly.conv ? sampleLut3D(r.readAux('conv'), input, interp) : input, interp)
         : sampleLut3D(r.readBaked(), input, interp)
       : computeOutput
@@ -253,7 +260,7 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
   // interacción: zoom con rueda, paneo con arrastre, cortina de comparación
   useEffect(() => {
     const canvas = canvasRef.current!
-    let drag: null | { kind: 'pan' | 'split' | 'pick'; x: number; y: number; cell?: Rect } = null
+    let drag: null | { kind: 'pan' | 'split' | 'pick' | 'color'; x: number; y: number; cell?: Rect } = null
     const cellAt = (r: Renderer, x: number, y: number) => {
       const cs = r.gridCells()
       const i = cs.findIndex((c) => x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h)
@@ -289,7 +296,8 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
         return
       }
       const nearSplit = st.compare === 'split' && Math.abs(x - st.split * rect.width) < 10
-      drag = { kind: nearSplit ? 'split' : 'pan', x: e.clientX, y: e.clientY }
+      // gotero activo: un clic toma el color (arrastrar sigue moviendo la imagen)
+      drag = { kind: nearSplit ? 'split' : st.picking !== null ? 'color' : 'pan', x: e.clientX, y: e.clientY }
       canvas.setPointerCapture(e.pointerId)
     }
     const onMove = (e: PointerEvent) => {
@@ -302,6 +310,8 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
         useApp.getState().setSplit((e.clientX - rect.left - c.x) / c.w)
       } else if (drag?.kind === 'pick') {
         if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag = null
+      } else if (drag?.kind === 'color' && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) {
+        drag = { ...drag, kind: 'pan' }
       } else if (drag) {
         const dpr = canvas.width / Math.max(1, rect.width)
         r.view = {
@@ -314,7 +324,8 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
       } else {
         const st = useApp.getState()
         const px = pointerRef.current.x
-        if (gridRef.current) {
+        if (st.picking !== null && !gridRef.current) canvas.style.cursor = 'cell'
+        else if (gridRef.current) {
           const hit = cellAt(r, px, pointerRef.current.y)
           canvas.style.cursor = !hit
             ? 'default'
@@ -333,6 +344,12 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
         const st = useApp.getState()
         const f = hit && st.frames[hit.i]
         if (f) st.setActiveFrame(f.id)
+      }
+      if (drag?.kind === 'color' && r) {
+        const rect = canvas.getBoundingClientRect()
+        const [ix, iy] = r.screenToImage(e.clientX - rect.left, e.clientY - rect.top)
+        const st = useApp.getState()
+        if (st.picking !== null) pickQualifierColor(st.picking, Math.floor(ix), Math.floor(iy))
       }
       drag = null
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
@@ -382,7 +399,9 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
           {compare === 'before' ? 'ANTES' : 'ANTES │ DESPUÉS'}
         </div>
       )}
-      {bake?.lookOnly && image && <div className="viewer__badge viewer__badge--low">PREVIEW: CONVERSIÓN + SOLO LOOK</div>}
+      {bake?.lookOnly && image && !bake.qualMask && <div className="viewer__badge viewer__badge--low">PREVIEW: CONVERSIÓN + SOLO LOOK</div>}
+      {bake?.qualMask && image && <div className="viewer__badge viewer__badge--low">MÁSCARA: {bake.qualMask.name.toUpperCase()}</div>}
+      {picking !== null && image && !grid && <div className="viewer__badge viewer__badge--pick">GOTERO: CLIC SOBRE LA IMAGEN · ESC CANCELA</div>}
       {grid &&
         cells.map((c, i) => {
           const f = frames[i]

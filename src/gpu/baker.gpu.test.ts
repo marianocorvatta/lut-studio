@@ -354,3 +354,24 @@ describe('etapa Match', () => {
     r.dispose()
   })
 })
+
+describe('correcciones por color', () => {
+  it('CPU vs GPU < 1e-4: varias correcciones, máscara y corte del gotero', async () => {
+    const { newQualifier } = await import('../color/qualifiers')
+    const r = new Renderer(makeCanvas(16, 16))
+    const params = defaultParams()
+    params.output.clamp = false
+    params.qualifiers = [
+      { ...newQualifier('piel'), hue: { center: 45, width: 20, soft: 15 }, adjust: { hue: 10, sat: 0.9, lum: 0.02 } },
+      { ...newQualifier('cielo'), hue: { center: 250, width: 25, soft: 20 }, chroma: { center: 0.12, width: 0.1, soft: 0.05 }, adjust: { hue: -170, sat: 1.3, lum: -0.03 } },
+      { ...newQualifier('verdes'), hue: { center: 140, width: 180, soft: 10 }, luma: { center: 0.4, width: 0.15, soft: 0.2 }, adjust: { hue: 0, sat: 1.2, lum: 0 }, intensity: 0.6 },
+    ]
+    const luts = { conversionLut: wavyLut(33, 8), creativeLut: wavyLut(17, 9) }
+    for (const opts of [{}, { qualifier: { index: 1, mode: 'mask' as const } }, { qualifier: { index: 2, mode: 'stop' as const } }]) {
+      const p = prepare(params, luts, 'tetrahedral', opts)
+      r.bake(p, 33)
+      expect(diff(r.readBaked().data, bakeCpu(p, 33).data).max).toBeLessThan(TOL)
+    }
+    r.dispose()
+  })
+})

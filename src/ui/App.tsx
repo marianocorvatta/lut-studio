@@ -50,13 +50,21 @@ export function App() {
     [params, conversionLut, creativeLut, interpolation],
   )
   const previewLookOnly = useApp((s) => s.previewLookOnly)
+  const qualMaskView = useApp((s) => s.qualMaskView)
   const bake = useMemo(() => {
     const luts = { conversionLut: conversionLut?.lut ?? null, creativeLut: creativeLut?.lut ?? null }
     const lookOnly = previewLookOnly
       ? { conv: prepareConversion(params, luts, interpolation, false), look: prepareLookOnly(params, luts, interpolation) }
       : null
-    return { prepared, size: lutSize, lookOnly }
-  }, [prepared, lutSize, previewLookOnly, params, conversionLut, creativeLut, interpolation])
+    const q = qualMaskView !== null ? params.qualifiers[qualMaskView] : undefined
+    const qualMask = q
+      ? {
+          prepared: prepare(params, luts, interpolation, { qualifier: { index: qualMaskView!, mode: 'mask' } }),
+          name: q.name || `color ${qualMaskView! + 1}`,
+        }
+      : null
+    return { prepared, size: lutSize, lookOnly, qualMask }
+  }, [prepared, lutSize, previewLookOnly, params, conversionLut, creativeLut, interpolation, qualMaskView])
   useDiagnostics(prepared, lutSize, mode === 'studio')
   const validation = useApp((s) => s.validation)
   const validateImage = useMemo(
@@ -114,8 +122,9 @@ export function App() {
           st.setViewerMax(!st.viewerMax)
           break
         case 'escape':
-          if (!st.viewerMax) return
-          st.setViewerMax(false)
+          if (st.picking !== null) st.setPicking(null)
+          else if (st.viewerMax) st.setViewerMax(false)
+          else return
           break
         case 'g':
           if (st.mode !== 'validate' && (st.gridView || st.frames.length > 1)) st.setGridView(!st.gridView)

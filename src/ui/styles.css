@@ -961,3 +961,64 @@ button.icon--thin.on {
 .stage__restore:hover {
   opacity: 1;
 }
+.viewer__badge--pick {
+  top: auto;
+  bottom: 36px;
+}
+
+/* Colores (qualifiers) */
+.qual {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 8px 8px;
+  margin-bottom: 8px;
+  background: var(--panel-2);
+}
+.qual__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+.qual__head::-webkit-details-marker {
+  display: none;
+}
+.qual__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.qual__name {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+.qual__group {
+  margin: 8px 0 2px;
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.qual__window {
+  border-left: 1px solid var(--line);
+  padding-left: 6px;
+  margin: 4px 0;
+}
+.qual__axis {
+  color: var(--dim);
+  font-size: 11.5px;
+}
+button.icon.on {
+  background: var(--control-hover);
+  color: var(--strong);
+  border-color: var(--strong);
+}
+.row--between {
+  justify-content: space-between;
+}

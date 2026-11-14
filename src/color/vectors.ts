@@ -3,7 +3,8 @@
  * con +Cb a la derecha y +Cr arriba. Un solo lugar define la orientación, así las dos vistas coinciden.
  * Solo interfaz: nada de esto entra al pipeline ni al .cube.
  */
-import { wheelDir } from './grade'
+import { encode24, wheelDir } from './grade'
+import { oklabToLinear } from './oklab'
 
 export type RGB3 = [number, number, number]
 
@@ -103,4 +104,31 @@ export function cbcrToCanvas(cb: number, cr: number, S: number): [number, number
 export function skinLineEnd(S: number): [number, number] {
   const a = (SKIN_LINE_ANGLE * Math.PI) / 180
   return cbcrToCanvas(Math.cos(a) * 0.5, Math.sin(a) * 0.5, S)
+}
+
+/** Cb/Cr de un color OkLCh (tono en grados), pasando por Rec.709 γ2.4: misma proyección que el vectorscopio. */
+export function lchToCbCr(L: number, C: number, hDeg: number): [number, number] {
+  const h = (hDeg * Math.PI) / 180
+  const lin = oklabToLinear(L, C * Math.cos(h), C * Math.sin(h))
+  return rgbToCbCr([encode24(lin[0]), encode24(lin[1]), encode24(lin[2])])
+}
+
+/**
+ * Contorno de una ventana OkLCh en el plano Cb/Cr: el borde de (tono ± ancho, croma ± ancho) a la luminancia del
+ * centro, muestreado y proyectado. `extra`: agrega la suavidad (contorno exterior). Para el indicador del vectorscopio.
+ */
+export function selectionOutline(
+  sel: { hue: { center: number; width: number; soft: number }; chroma: { center: number; width: number; soft: number }; luma: { center: number } },
+  extra: boolean,
+  steps = 24,
+): [number, number][] {
+  const hw = Math.min(180, sel.hue.width + (extra ? sel.hue.soft : 0))
+  const cw = sel.chroma.width + (extra ? sel.chroma.soft : 0)
+  const c0 = Math.max(0, sel.chroma.center - cw)
+  const c1 = sel.chroma.center + cw
+  const L = sel.luma.center
+  const pts: [number, number][] = []
+  for (let i = 0; i <= steps; i++) pts.push(lchToCbCr(L, c1, sel.hue.center - hw + (2 * hw * i) / steps))
+  for (let i = steps; i >= 0; i--) pts.push(lchToCbCr(L, c0, sel.hue.center - hw + (2 * hw * i) / steps))
+  return pts
 }

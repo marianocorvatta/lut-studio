@@ -13,6 +13,8 @@ import { CURVE_N } from '../color/grade'
 import { createTarget, createTexture, disposeTarget, drawTo, Program, readTarget, type GL, type Target } from './gl'
 import { GRADE_GLSL } from './gradeGlsl'
 import { MATCH_GLSL } from './matchGlsl'
+import { QUAL_GLSL, QUAL_SLOTS } from './qualifierGlsl'
+import type { PreparedQualifier } from '../color/qualifiers'
 import { LutCache, type GpuLut } from './lutCache'
 import { LUT_GLSL } from './lutGlsl'
 
@@ -46,6 +48,7 @@ out vec4 o;
 ${LUT_GLSL}
 ${GRADE_GLSL}
 ${MATCH_GLSL}
+${QUAL_GLSL}
 // --- Apple Log (constantes de color/appleLog2.constants.ts) ---
 const float AL_R0 = ${K.R0};
 const float AL_RT = ${K.Rt};
@@ -92,6 +95,13 @@ void main() {
   // 3. Etapa creativa: match con la referencia, correcciones estilo DaVinci y el LUT creativo con intensidad
   if (uMatchOn == 1) c = matchStage(c);
   c = gradeStage(c);
+
+  // 3b. Correcciones por color (y, solo para el gotero / la máscara, el corte antes de la corrección objetivo)
+  if (uQualN > 0) c = qualStage(c);
+  if (uQualMode == 1) { o = vec4(c, 1.0); return; }
+  if (uQualMode == 2) { float w = qualMaskOf(uQualN, c); o = vec4(w, w, w, 1.0); return; }
+
+  // 3c. LUT creativo con intensidad
   if (uCreativeOn == 1) {
     vec3 t = applyLut(uCreativeLut, uCreativeSize, uCreativeKind, uInterp, uCreativeMin, uCreativeMax, c);
     c += (t - c) * uCreativeMix;
@@ -176,9 +186,32 @@ export class Baker {
       gl.uniform2f(prog.loc('uMatchSkin'), pm.skin[0], pm.skin[1])
     }
 
+    this.setQualifiers(p.quals, p.qualTarget, p.qualMode)
+
     drawTo(gl, this.target)
     this.cpuCopy = null
     return { tex: this.target.tex, size, kind: '3D', domainMin: [0, 0, 0], domainMax: [1, 1, 1] }
+  }
+
+  private setQualifiers(list: PreparedQualifier[], target: PreparedQualifier | null, mode: Prepared['qualMode']): void {
+    const { gl } = this.g
+    const prog = this.prog
+    const all = target ? [...list, target] : list
+    const hue = new Float32Array(QUAL_SLOTS * 4)
+    const chroma = new Float32Array(QUAL_SLOTS * 3)
+    const luma = new Float32Array(QUAL_SLOTS * 3)
+    const adj = new Float32Array(QUAL_SLOTS * 4)
+    all.forEach((q, i) => {
+      hue.set([...q.hue, q.hueFull ? 1 : 0], i * 4)
+      chroma.set(q.chroma, i * 3)
+      luma.set(q.luma, i * 3)
+      adj.set([q.rot, q.sat, q.lum, q.intensity], i * 4)
+    })
+    prog.i('uQualN', list.length).i('uQualMode', mode === 'stop' ? 1 : mode === 'mask' ? 2 : 0)
+    gl.uniform4fv(prog.loc('uQualHue'), hue)
+    gl.uniform3fv(prog.loc('uQualChroma'), chroma)
+    gl.uniform3fv(prog.loc('uQualLuma'), luma)
+    gl.uniform4fv(prog.loc('uQualAdj'), adj)
   }
 
   private bindLut(prefix: string, unit: number, lut: Lut | null): void {
