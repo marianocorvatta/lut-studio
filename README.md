@@ -2,7 +2,7 @@
 
 Aplicación web, sin servidor, para crear y probar LUTs 3D (`.cube`) a partir de frames grabados en **Apple Log 2**.
 
-Abrís un frame (TIFF o PNG de 16 bits), lo convertís a Rec.709, lo corregís y exportás el resultado como `.cube` para usarlo en DaVinci Resolve u otro programa.
+Abrís uno o varios frames (TIFF o PNG de 16 bits), los convertís a Rec.709, armás el look y exportás el resultado como `.cube` para usarlo en DaVinci Resolve u otro programa.
 
 ## Qué hace
 
@@ -16,7 +16,7 @@ Abrís un frame (TIFF o PNG de 16 bits), lo convertís a Rec.709, lo corregís y
   - split toning;
   - un LUT creativo con intensidad regulable.
 - **Varios frames:** hasta 6 frames a la vez, con etiqueta editable. Se edita uno (el principal) y la grilla muestra todos con el mismo LUT. Los scopes pueden mostrar el principal o todos combinados.
-- **Alertas del LUT:** overlay con falso color para los píxeles que recortan (por debajo de 0 o por encima de 1 antes del clamp final), y diagnóstico de quiebres e inversiones de luminancia en el look. Muestra cuántas celdas del LUT tienen cada problema y qué porcentaje de los píxeles de tus frames cae en ellas. Se calcula en un worker, sin trabar los controles.
+- **Alertas del LUT:** overlay con falso color para los píxeles que recortan (por debajo de 0 o por encima de 1 antes del clamp final), y diagnóstico de quiebres e inversiones de luminancia. Los quiebres y las inversiones se buscan en el look solo (Rec.709 → Rec.709), no en la conversión log → Rec.709: esa conversión tiene rodillas y un gamut amplio donde subir el azul baja la luminancia, y no son artefactos. Muestra cuántas celdas del LUT tienen cada problema y qué porcentaje de los píxeles de tus frames cae en ellas. Se calcula en un worker, sin trabar los controles.
 - **Exportar solo el look:** además del LUT completo (log → Rec.709 + look), un `.cube` de Rec.709 γ2.4 a Rec.709 γ2.4 con solo la parte creativa, para usar después de un Color Space Transform o con material de otras cámaras. La vista previa "como lo vería con solo el look" aplica la conversión y después ese LUT, en cadena. Con la entrada en neutro coincide con el LUT completo salvo el error de interpolar dos LUTs en cadena (en un look típico, promedio 1.1e-3 en 33³ y 3.9e-4 en 65³; el máximo, 0.09 y 0.06, aparece cerca del negro en colores saturados).
 - **Línea de tono de piel en el vectorscopio:** el eje I de YIQ calculado con la misma matemática Cb/Cr Rec.709 que el vectorscopio y las ruedas (130.4°; los 123° habituales corresponden al U/V analógico de Rec.601). Se puede ocultar.
 - **Match con una imagen de referencia:** cargás una foto o un frame con el look que buscás y obtenés un punto de partida. Es una etapa al comienzo de la parte creativa, en Oklab: una curva de luminancia monótona y suave que acerca el histograma de tus frames al de la referencia, y un ajuste de color por sombras, medios y altas que acerca media y covarianza. Usa todos los frames cargados, tiene intensidad, on/off y "proteger piel". La referencia se convierte a Rec.709 γ2.4 según su perfil ICC (sRGB, Display P3, Adobe RGB…); si no trae perfil, se asume sRGB.
