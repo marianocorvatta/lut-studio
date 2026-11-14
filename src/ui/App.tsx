@@ -5,6 +5,7 @@ import type { RenderLayer } from '../gpu/renderer'
 import { readFile } from '../io/platform'
 import { exportCube, handleDroppedFiles, openImage, openProject, saveProject } from './actions'
 import { useApp, type AppMode } from './store'
+import { FrameBar } from './FrameBar'
 import { ScopesPanel } from './ScopesPanel'
 import { StudioPanel } from './StudioPanel'
 import { TestPanel } from './TestPanel'
@@ -93,6 +94,9 @@ export function App() {
         case 'f':
           st.requestFit()
           break
+        case 'g':
+          if (st.mode !== 'validate' && (st.gridView || st.frames.length > 1)) st.setGridView(!st.gridView)
+          break
         case '1':
           st.requestOneToOne()
           break
@@ -154,8 +158,8 @@ export function App() {
           ))}
         </nav>
         <div className="row">
-          <button onClick={() => void openImage()} title="Abrir imagen (O)">
-            Abrir imagen…
+          <button onClick={() => void openImage()} title="Agregar uno o más frames, hasta 6 (O)">
+            Abrir frames…
           </button>
           <label className="field" title="Debe coincidir con Project Settings → Color Management → 3D lookup table interpolation en DaVinci (T)">
             <span>Interpolación</span>
@@ -196,6 +200,7 @@ export function App() {
 
       <main className="main">
         <div className="stage">
+          {mode !== 'validate' && <FrameBar />}
           {mode === 'studio' ? (
             <Viewer bake={bake} />
           ) : mode === 'validate' ? (
@@ -227,7 +232,7 @@ export function App() {
               picker y del .cube no la incluyen. Usá la misma que el viewer de DaVinci.
             </p>
             <p className="keys">
-              <kbd>O</kbd> abrir · <kbd>S</kbd> cortina · <kbd>B</kbd> antes · <kbd>F</kbd> ajustar · <kbd>1</kbd> 100% ·{' '}
+              <kbd>O</kbd> abrir · <kbd>S</kbd> cortina · <kbd>B</kbd> antes · <kbd>F</kbd> ajustar · <kbd>G</kbd> grilla · <kbd>1</kbd> 100% ·{' '}
               <kbd>T</kbd> interpolación · <kbd>⌘Z</kbd> deshacer · <kbd>⇧⌘Z</kbd> rehacer · <kbd>⌘S</kbd> guardar proyecto ·{' '}
               <kbd>⇧⌘O</kbd> abrir proyecto · <kbd>⌘E</kbd> exportar .cube · rueda: zoom · arrastrar: mover
             </p>

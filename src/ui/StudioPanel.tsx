@@ -18,6 +18,7 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
   const lutSize = useApp((s) => s.lutSize)
   const missing = useApp((s) => s.missingLuts)
   const embedLuts = useApp((s) => s.embedLuts)
+  const embedFrames = useApp((s) => s.embedFrames)
   const canUndo = useApp((s) => s.history.past.length > 0 || JSON.stringify(s.history.committed) !== JSON.stringify(s.params))
   const canRedo = useApp((s) => s.history.future.length > 0)
   const interpolation = useApp((s) => s.interpolation)
@@ -55,6 +56,12 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
           Guardar proyecto…
         </button>
         <Toggle label="Incluir LUTs" checked={embedLuts} onChange={(v) => useApp.getState().setEmbedLuts(v)} title="Guarda los .cube dentro del proyecto: el archivo queda autocontenido" />
+        <Toggle
+          label="Incluir frames"
+          checked={embedFrames}
+          onChange={(v) => useApp.getState().setEmbedFrames(v)}
+          title="Guarda los píxeles de los frames dentro del proyecto (exactos). Sin esto, se guardan como referencia: nombre, etiqueta y huella."
+        />
       </div>
       {(missing.conversion || missing.creative) && (
         <p className="issue">

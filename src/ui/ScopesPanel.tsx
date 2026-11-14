@@ -119,6 +119,9 @@ function drawHistogram(ctx: CanvasRenderingContext2D, s: ScopeImage, W: number, 
 export function ScopesPanel() {
   const mode = useApp((s) => s.scopeMode)
   const image = useApp((s) => s.image)
+  const frameCount = useApp((s) => s.frames.length)
+  const appMode = useApp((s) => s.mode)
+  const allFrames = useApp((s) => s.scopesAllFrames) && frameCount > 1 && appMode !== 'validate'
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [precise, setPrecise] = useState(true)
 
@@ -130,7 +133,7 @@ export function ScopesPanel() {
       last = performance.now()
       const canvas = canvasRef.current
       if (!canvas) return
-      const s = r.computeScope(mode)
+      const s = r.computeScope(mode, false, allFrames)
       setPrecise(r.scopesPrecise)
       const ctx = canvas.getContext('2d')!
       if (!s) {
@@ -161,7 +164,7 @@ export function ScopesPanel() {
       viewerApi.listeners.delete(onRender)
       clearTimeout(timer)
     }
-  }, [mode, image])
+  }, [mode, image, allFrames, frameCount])
 
   return (
     <div className={mode === 'off' ? 'scopes scopes--off' : 'scopes'}>
@@ -176,9 +179,15 @@ export function ScopesPanel() {
             Ocultar
           </button>
         </div>
+        {mode !== 'off' && frameCount > 1 && (
+          <label className="check" title="Acumula en el scope todos los frames cargados">
+            <input type="checkbox" checked={allFrames} onChange={(e) => useApp.getState().setScopesAllFrames(e.target.checked)} />
+            <span>Todos los frames</span>
+          </label>
+        )}
         {mode !== 'off' && (
           <span className="scopes__note">
-            Imagen completa · valores de salida (sin la transformación de visualización)
+            {allFrames ? `${frameCount} frames combinados` : 'Frame principal, imagen completa'} · valores de salida (sin la transformación de visualización)
             {!precise && ' · acumulación en float16'}
           </span>
         )}

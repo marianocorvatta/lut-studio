@@ -4,11 +4,14 @@ import { defaultParams, type LookParams, type LutSize } from '../color/params'
 import type { CompareMode, DisplayTransform } from '../gpu/renderer'
 import type { ScopeMode } from '../gpu/scopes'
 import type { FloatImage } from '../io/image'
-import type { LutRef } from '../io/project'
+import type { FrameRef, LutRef } from '../io/project'
 import type { CompareStats } from '../color/compare'
 import { commitHistory, newHistory, redoHistory, undoHistory, type History } from './history'
 
 export type AppMode = 'studio' | 'test' | 'validate'
+
+/** frames que se pueden cargar a la vez */
+export const MAX_FRAMES = 6
 
 export interface TestLayer {
   id: string
@@ -17,6 +20,14 @@ export interface TestLayer {
   enabled: boolean
   /** 0..1 */
   opacity: number
+}
+
+/** Un frame cargado. Todos ven el mismo LUT; el principal es el que se edita en grande. */
+export interface Frame {
+  id: string
+  /** etiqueta editable ("piel", "cielo", "noche") */
+  label: string
+  image: FloatImage
 }
 
 export interface NamedLut {
@@ -47,7 +58,18 @@ export interface Notice {
 
 interface AppState {
   mode: AppMode
+  frames: Frame[]
+  activeFrame: string | null
+  /** imagen del frame principal (derivada de frames y activeFrame) */
   image: FloatImage | null
+  /** vista grilla con todos los frames */
+  gridView: boolean
+  /** scopes con todos los frames combinados en lugar del principal */
+  scopesAllFrames: boolean
+  /** incluir los píxeles de los frames en el JSON al guardar el proyecto */
+  embedFrames: boolean
+  /** frames que pide el proyecto abierto y todavía no se cargaron */
+  missingFrames: FrameRef[]
   interpolation: Interpolation
   display: DisplayTransform
   compare: CompareMode
@@ -73,7 +95,17 @@ interface AppState {
   oneToOneNonce: number
 
   setMode: (m: AppMode) => void
-  setImage: (img: FloatImage | null) => void
+  /** agrega frames (hasta MAX_FRAMES); el primero agregado pasa a ser el principal. Devuelve cuántos entraron. */
+  addFrames: (items: { image: FloatImage; label?: string }[]) => number
+  /** reemplaza todos los frames (al abrir un proyecto) */
+  replaceFrames: (items: { image: FloatImage; label: string }[], active: number) => void
+  setActiveFrame: (id: string) => void
+  setFrameLabel: (id: string, label: string) => void
+  removeFrame: (id: string) => void
+  setGridView: (v: boolean) => void
+  setScopesAllFrames: (v: boolean) => void
+  setEmbedFrames: (v: boolean) => void
+  setMissingFrames: (refs: FrameRef[]) => void
   setInterpolation: (i: Interpolation) => void
   setDisplay: (d: DisplayTransform) => void
   setCompare: (c: CompareMode) => void
@@ -108,13 +140,21 @@ interface AppState {
 
 let seq = 1
 
+const activeImage = (frames: Frame[], id: string | null) => frames.find((f) => f.id === id)?.image ?? null
+
 let autoCommit: ReturnType<typeof setTimeout> | undefined
 /** los cambios que no llaman a commit (toggles, selects) se registran solos después de una pausa */
 const AUTO_COMMIT_MS = 600
 
 export const useApp = create<AppState>((set, get) => ({
   mode: 'studio',
+  frames: [],
+  activeFrame: null,
   image: null,
+  gridView: false,
+  scopesAllFrames: false,
+  embedFrames: false,
+  missingFrames: [],
   interpolation: 'tetrahedral',
   display: 'rec709-srgb',
   compare: 'off',
@@ -145,7 +185,34 @@ export const useApp = create<AppState>((set, get) => ({
   oneToOneNonce: 0,
 
   setMode: (mode) => set({ mode }),
-  setImage: (image) => set({ image }),
+  addFrames: (items) => {
+    const s = get()
+    const room = Math.max(0, MAX_FRAMES - s.frames.length)
+    const added = items.slice(0, room).map((it) => ({ id: `f${seq++}`, label: it.label ?? '', image: it.image }))
+    if (!added.length) return 0
+    const frames = [...s.frames, ...added]
+    set({ frames, activeFrame: added[0].id, image: added[0].image })
+    return added.length
+  },
+  replaceFrames: (items, active) => {
+    const frames = items.slice(0, MAX_FRAMES).map((it) => ({ id: `f${seq++}`, label: it.label, image: it.image }))
+    const id = frames[Math.min(active, frames.length - 1)]?.id ?? null
+    set({ frames, activeFrame: id, image: activeImage(frames, id) })
+  },
+  setActiveFrame: (id) => set((s) => (s.frames.some((f) => f.id === id) ? { activeFrame: id, image: activeImage(s.frames, id) } : s)),
+  setFrameLabel: (id, label) => set((s) => ({ frames: s.frames.map((f) => (f.id === id ? { ...f, label } : f)) })),
+  removeFrame: (id) =>
+    set((s) => {
+      const i = s.frames.findIndex((f) => f.id === id)
+      if (i < 0) return s
+      const frames = s.frames.filter((f) => f.id !== id)
+      const activeFrame = s.activeFrame === id ? (frames[Math.min(i, frames.length - 1)]?.id ?? null) : s.activeFrame
+      return { frames, activeFrame, image: activeImage(frames, activeFrame) }
+    }),
+  setGridView: (gridView) => set({ gridView }),
+  setScopesAllFrames: (scopesAllFrames) => set({ scopesAllFrames }),
+  setEmbedFrames: (embedFrames) => set({ embedFrames }),
+  setMissingFrames: (missingFrames) => set({ missingFrames }),
   setInterpolation: (interpolation) => set({ interpolation }),
   setDisplay: (display) => set({ display }),
   setCompare: (compare) => set({ compare }),

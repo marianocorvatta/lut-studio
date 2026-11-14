@@ -1,30 +1,61 @@
 import { parseCube, writeCube } from '../color/cube'
 import type { Lut } from '../color/lut'
-import { decodeImage } from '../io/image'
-import { lutHash, parseProject, serializeProject } from '../io/project'
+import { decodeImage, type FloatImage } from '../io/image'
+import { frameHash, lutHash, parseProject, serializeProject } from '../io/project'
 import { CUBE_ACCEPT, decodeText, IMAGE_ACCEPT, pickFiles, PROJECT_ACCEPT, saveFile, type PickedFile } from '../io/platform'
-import { useApp } from './store'
+import { MAX_FRAMES, useApp } from './store'
 import { viewerApi } from './Viewer'
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-export async function loadImageFile(file: PickedFile): Promise<void> {
+/**
+ * Agrega frames (hasta MAX_FRAMES). Si el proyecto abierto esperaba un frame con la misma huella o el mismo
+ * nombre, toma su etiqueta. El primero agregado pasa a ser el principal.
+ */
+export async function loadImageFiles(files: PickedFile[]): Promise<void> {
   const app = useApp.getState()
-  app.setBusy(`Decodificando ${file.name}…`)
-  try {
-    const img = await decodeImage(file.bytes, file.name)
-    app.setImage(img)
-    for (const w of img.warnings) app.notify('warn', w)
-  } catch (e) {
-    app.notify('error', `No se pudo abrir "${file.name}": ${errText(e)}`)
-  } finally {
-    app.setBusy(null)
+  const room = MAX_FRAMES - app.frames.length
+  if (room <= 0) {
+    app.notify('warn', `Ya hay ${MAX_FRAMES} frames cargados (el máximo). Quitá alguno para agregar otro.`)
+    return
   }
+  if (files.length > room)
+    app.notify('warn', `Se cargan ${room} de ${files.length} imágenes: el máximo es ${MAX_FRAMES} frames.`)
+  const items: { image: FloatImage; label?: string }[] = []
+  for (const file of files.slice(0, room)) {
+    app.setBusy(`Decodificando ${file.name}…`)
+    try {
+      const image = await decodeImage(file.bytes, file.name)
+      for (const w of image.warnings) app.notify('warn', `${file.name}: ${w}`)
+      items.push({ image, label: claimMissingFrame(image) })
+    } catch (e) {
+      app.notify('error', `No se pudo abrir "${file.name}": ${errText(e)}`)
+    }
+  }
+  app.setBusy(null)
+  useApp.getState().addFrames(items)
+}
+
+/** Si el proyecto esperaba este frame, lo saca de la lista de faltantes y devuelve su etiqueta. */
+function claimMissingFrame(image: FloatImage): string | undefined {
+  const app = useApp.getState()
+  if (!app.missingFrames.length) return undefined
+  const hash = frameHash(image)
+  const byHash = app.missingFrames.find((r) => r.hash === hash)
+  const ref = byHash ?? app.missingFrames.find((r) => r.name === image.name)
+  if (!ref) return undefined
+  if (!byHash) app.notify('warn', `"${image.name}" no tiene los mismos píxeles que el frame que guardó el proyecto.`)
+  app.setMissingFrames(app.missingFrames.filter((r) => r !== ref))
+  return ref.label
+}
+
+export async function loadImageFile(file: PickedFile): Promise<void> {
+  await loadImageFiles([file])
 }
 
 export async function openImage(): Promise<void> {
-  const [file] = await pickFiles(IMAGE_ACCEPT)
-  if (file) await loadImageFile(file)
+  const files = await pickFiles(IMAGE_ACCEPT, true)
+  if (files.length) await loadImageFiles(files)
 }
 
 export function parseCubeFile(file: PickedFile): Lut | null {
@@ -78,9 +109,18 @@ export function saveProject(): void {
     conversionLut: app.conversionLut,
     creativeLut: app.creativeLut,
     embedLuts: app.embedLuts,
+    frames: app.frames.map((f) => ({ label: f.label, image: f.image })),
+    activeFrame: Math.max(0, app.frames.findIndex((f) => f.id === app.activeFrame)),
+    embedFrames: app.embedFrames,
   })
   saveFile(`${projectBase()}.lutstudio.json`, text, 'application/json')
-  app.notify('info', `Proyecto guardado${app.embedLuts ? ' con los LUTs incluidos' : ' (los LUTs se guardan como referencia)'}.`)
+  const what = [app.embedLuts ? 'los LUTs' : null, app.embedFrames && app.frames.length ? 'los frames' : null].filter(Boolean)
+  app.notify(
+    'info',
+    `Proyecto guardado${what.length ? ` con ${what.join(' y ')} incluidos` : ''}. ${
+      what.length < 2 ? 'Lo que no se incluye queda como referencia.' : ''
+    }`.trim(),
+  )
 }
 
 export function loadProjectText(name: string, text: string): void {
@@ -98,8 +138,23 @@ export function loadProjectText(name: string, text: string): void {
       missingLuts: { conversion: conv && !conv.lut ? conv.ref : null, creative: crea && !crea.lut ? crea.ref : null },
     })
     app.setMode('studio')
+    // frames: los incluidos se cargan; los que van por referencia quedan pendientes (se reconocen al abrirlos)
+    if (p.frames.length) {
+      const present = p.frames.filter((f) => f.image)
+      const activeRef = p.frames[p.activeFrame]
+      const active = Math.max(0, present.findIndex((f) => f === activeRef))
+      app.replaceFrames(
+        present.map((f) => ({ image: f.image!, label: f.ref.label })),
+        active,
+      )
+      app.setMissingFrames(p.frames.filter((f) => !f.image).map((f) => f.ref))
+    } else app.setMissingFrames([])
     for (const w of p.warnings) app.notify('warn', w)
-    const missing = [conv && !conv.lut ? conv.ref.name : null, crea && !crea.lut ? crea.ref.name : null].filter(Boolean)
+    const missing = [
+      conv && !conv.lut ? conv.ref.name : null,
+      crea && !crea.lut ? crea.ref.name : null,
+      ...p.frames.filter((f) => !f.image).map((f) => `${f.ref.name}${f.ref.label ? ` (${f.ref.label})` : ''}`),
+    ].filter(Boolean)
     app.notify(
       missing.length ? 'warn' : 'info',
       missing.length
@@ -122,7 +177,7 @@ export async function handleDroppedFiles(files: PickedFile[]): Promise<void> {
   if (projects[0]) loadProjectText(projects[0].name, decodeText(projects[0].bytes))
   const cubes = files.filter((f) => /\.cube$/i.test(f.name))
   const images = files.filter((f) => /\.(tiff?|png|jpe?g)$/i.test(f.name))
-  if (images[0]) await loadImageFile(images[0])
+  if (images.length) await loadImageFiles(images)
   if (cubes.length) {
     const app = useApp.getState()
     if (app.mode === 'studio') {

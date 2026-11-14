@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { identityLut3D } from '../color/lut'
 import { defaultParams } from '../color/params'
 import { commitHistory, newHistory, redoHistory, undoHistory } from '../ui/history'
-import { lutHash, parseProject, ProjectError, serializeProject } from './project'
+import type { FloatImage } from './image'
+import { frameHash, lutHash, parseProject, ProjectError, serializeProject } from './project'
 
 function sampleLut() {
   const lut = identityLut3D(5)
@@ -100,5 +101,61 @@ describe('historial de deshacer', () => {
     const p0 = defaultParams()
     const h = newHistory(p0)
     expect(commitHistory(h, structuredClone(p0))).toBe(h)
+  })
+})
+
+describe('proyecto con varios frames', () => {
+  const img = (bits: 8 | 16 | 32, name: string): FloatImage => {
+    const w = 37
+    const h = 11
+    const data = new Float32Array(w * h * 4)
+    const max = 2 ** (bits === 32 ? 16 : bits) - 1
+    for (let i = 0; i < w * h; i++)
+      for (let c = 0; c < 4; c++) {
+        const u = (i * 7919 + c * 104729) % (max + 1)
+        // 16 bits: como el decodificador TIFF (u * 1/max); 8 bits: como el de JPEG (u / 255); 32: valores libres
+        data[i * 4 + c] = c === 3 ? 1 : bits === 32 ? u / max + 0.123456 : bits === 16 ? u * (1 / max) : u / max
+      }
+    return { width: w, height: h, data, bitDepth: bits, format: bits === 8 ? 'JPEG' : 'TIFF', hasICC: false, warnings: [], name }
+  }
+  const base = { params: defaultParams(), lutSize: 33 as const, interpolation: 'tetrahedral' as const, conversionLut: null, creativeLut: null, embedLuts: false }
+
+  it('por referencia: nombre, etiqueta, huella y principal', () => {
+    const frames = [
+      { label: 'piel', image: img(16, 'a.tif') },
+      { label: 'cielo', image: img(8, 'b.jpg') },
+    ]
+    const back = parseProject(serializeProject({ ...base, frames, activeFrame: 1, embedFrames: false }))
+    expect(back.activeFrame).toBe(1)
+    expect(back.frames.map((f) => [f.ref.name, f.ref.label, f.ref.hash, f.image])).toEqual([
+      ['a.tif', 'piel', frameHash(frames[0].image), null],
+      ['b.jpg', 'cielo', frameHash(frames[1].image), null],
+    ])
+  })
+
+  it('incluidos: los píxeles vuelven exactos (8, 16 bits y float)', () => {
+    const frames = [
+      { label: 'piel', image: img(16, 'a.tif') },
+      { label: '', image: img(8, 'b.jpg') },
+      { label: 'noche', image: img(32, 'c.tif') },
+    ]
+    const text = serializeProject({ ...base, frames, activeFrame: 2, embedFrames: true })
+    const raw = JSON.parse(text)
+    expect(raw.frames.map((f: { pixels: { encoding: string } }) => f.pixels.encoding)).toEqual(['u16', 'u8', 'f32'])
+    const back = parseProject(text)
+    expect(back.warnings).toEqual([])
+    back.frames.forEach((f, i) => {
+      expect(f.image!.data).toEqual(frames[i].image.data)
+      expect(f.ref.label).toBe(frames[i].label)
+    })
+  })
+
+  it('un proyecto sin frames (versión anterior) se abre igual', () => {
+    const raw = JSON.parse(serializeProject(base))
+    delete raw.frames
+    delete raw.activeFrame
+    const back = parseProject(JSON.stringify(raw))
+    expect(back.frames).toEqual([])
+    expect(back.activeFrame).toBe(0)
   })
 })

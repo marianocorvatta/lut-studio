@@ -88,6 +88,14 @@ export class Scopes {
   }
 
   compute(src: Target, mode: ScopeMode): ScopeImage {
+    return this.computeMany([src], mode)
+  }
+
+  /**
+   * Acumula varias imágenes en un mismo scope (frames combinados). `srcs` puede ser un generador que procesa
+   * cada imagen en el momento: cada una se dibuja antes de pedir la siguiente.
+   */
+  computeMany(srcs: Iterable<Target>, mode: ScopeMode): ScopeImage {
     const { gl } = this.g
     let t = this.targets.get(mode)
     if (!t) {
@@ -101,17 +109,24 @@ export class Scopes {
     gl.viewport(0, 0, t.width, t.height)
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
-    gl.enable(gl.BLEND)
-    gl.blendEquation(gl.FUNC_ADD)
-    gl.blendFunc(gl.ONE, gl.ONE)
-    this.prog.use().tex('uSrc', 0, src.tex).i('uMode', MODE_ID[mode]).f('uWeight', weight)
-    gl.uniform2i(this.prog.loc('uSrcSize'), src.width, src.height)
     const instances = mode === 'parade' || mode === 'histogram' ? 3 : 1
-    gl.drawArraysInstanced(gl.POINTS, 0, src.width * src.height, instances)
-    gl.disable(gl.BLEND)
+    let samples = 0
+    for (const src of srcs) {
+      // el generador ya terminó de procesar `src` (sin blending); se acumula con blending aditivo
+      this.prog.use().tex('uSrc', 0, src.tex).i('uMode', MODE_ID[mode]).f('uWeight', weight)
+      gl.uniform2i(this.prog.loc('uSrcSize'), src.width, src.height)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo)
+      gl.viewport(0, 0, t.width, t.height)
+      gl.enable(gl.BLEND)
+      gl.blendEquation(gl.FUNC_ADD)
+      gl.blendFunc(gl.ONE, gl.ONE)
+      gl.drawArraysInstanced(gl.POINTS, 0, src.width * src.height, instances)
+      gl.disable(gl.BLEND)
+      samples += src.width * src.height
+    }
     const data = readTarget(gl, t)
     if (weight !== 1) for (let i = 0; i < data.length; i++) data[i] /= weight
-    return { mode, width: t.width, height: t.height, data, samples: src.width * src.height }
+    return { mode, width: t.width, height: t.height, data, samples }
   }
 
   dispose(): void {
