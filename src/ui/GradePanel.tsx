@@ -2,17 +2,18 @@ import { useState } from 'react'
 import { hueSwatch } from '../color/oklab'
 import { defaultParams, type HueCurveName, type LookParams, type RgbCurveName, type WheelName } from '../color/params'
 import { ColorWheel } from './ColorWheel'
-import { Section, Slider } from './controls'
+import { Section } from './controls'
 import type { Qualifier } from '../color/qualifiers'
 import { CurveEditor } from './CurveEditor'
+import { ParamSlider } from './ParamControls'
+import { numberParam } from '../params/schema'
 import { useApp } from './store'
 
-const WHEELS: { id: WheelName; label: string; min: number; max: number; def: number }[] = [
-  { id: 'lift', label: 'Lift', min: -0.5, max: 0.5, def: 0 },
-  { id: 'gamma', label: 'Gamma', min: -1, max: 1, def: 0 },
-  { id: 'gain', label: 'Gain', min: 0, max: 2, def: 1 },
-  { id: 'offset', label: 'Offset', min: -0.5, max: 0.5, def: 0 },
-]
+// rangos y neutros del maestro de cada rueda: del esquema de parámetros
+const WHEELS: { id: WheelName; label: string; min: number; max: number; def: number }[] = (['lift', 'gamma', 'gain', 'offset'] as const).map((id) => {
+  const m = numberParam(`grade.${id}.master`)
+  return { id, label: id[0].toUpperCase() + id.slice(1), min: m.min, max: m.max, def: m.neutral }
+})
 
 const RGB_CURVES: { id: RgbCurveName; label: string; stroke?: string }[] = [
   { id: 'master', label: 'Y' },
@@ -137,12 +138,12 @@ export function GradePanel() {
           commit()
         }}
       >
-        <Slider label="Contraste" value={g.contrast} min={0} max={2} def={1} step={0.001} onChange={(v) => set((p) => void (p.grade.contrast = v))} onCommit={commit} />
-        <Slider label="Pivote" value={g.pivot} min={0} max={1} def={def.grade.pivot} step={0.001} format={(v) => v.toFixed(3)} onChange={(v) => set((p) => void (p.grade.pivot = v))} onCommit={commit} />
-        <Slider label="Saturación" value={g.saturation} min={0} max={2} def={1} step={0.001} onChange={(v) => set((p) => void (p.grade.saturation = v))} onCommit={commit} />
-        <Slider label="Sat. sombras" value={g.satShadows} min={0} max={2} def={1} step={0.001} onChange={(v) => set((p) => void (p.grade.satShadows = v))} onCommit={commit} />
-        <Slider label="Sat. medios" value={g.satMids} min={0} max={2} def={1} step={0.001} onChange={(v) => set((p) => void (p.grade.satMids = v))} onCommit={commit} />
-        <Slider label="Sat. altas" value={g.satHighs} min={0} max={2} def={1} step={0.001} onChange={(v) => set((p) => void (p.grade.satHighs = v))} onCommit={commit} />
+        <ParamSlider id="grade.contrast" label="Contraste" />
+        <ParamSlider id="grade.pivot" label="Pivote" />
+        <ParamSlider id="grade.saturation" label="Saturación" />
+        <ParamSlider id="grade.satShadows" label="Sat. sombras" />
+        <ParamSlider id="grade.satMids" label="Sat. medios" />
+        <ParamSlider id="grade.satHighs" label="Sat. altas" />
         <p className="hint">La saturación se calcula en Oklab: cambia la croma sin mover la luminancia percibida.</p>
       </Section>
 
@@ -236,11 +237,11 @@ export function GradePanel() {
           commit()
         }}
       >
-        <Slider label="Tono sombras" value={params.splitTone.shadowHue} min={0} max={360} step={1} def={def.splitTone.shadowHue} format={(v) => `${v.toFixed(0)}°`} onChange={(v) => set((p) => void (p.splitTone.shadowHue = v))} onCommit={commit} />
-        <Slider label="Cant. sombras" value={params.splitTone.shadowAmount} min={0} max={1} def={0} onChange={(v) => set((p) => void (p.splitTone.shadowAmount = v))} onCommit={commit} />
-        <Slider label="Tono altas" value={params.splitTone.highHue} min={0} max={360} step={1} def={def.splitTone.highHue} format={(v) => `${v.toFixed(0)}°`} onChange={(v) => set((p) => void (p.splitTone.highHue = v))} onCommit={commit} />
-        <Slider label="Cant. altas" value={params.splitTone.highAmount} min={0} max={1} def={0} onChange={(v) => set((p) => void (p.splitTone.highAmount = v))} onCommit={commit} />
-        <Slider label="Balance" value={params.splitTone.balance} min={-1} max={1} def={0} onChange={(v) => set((p) => void (p.splitTone.balance = v))} onCommit={commit} />
+        <ParamSlider id="splitTone.shadowHue" label="Tono sombras" />
+        <ParamSlider id="splitTone.shadowAmount" label="Cant. sombras" />
+        <ParamSlider id="splitTone.highHue" label="Tono altas" />
+        <ParamSlider id="splitTone.highAmount" label="Cant. altas" />
+        <ParamSlider id="splitTone.balance" label="Balance" />
         <p className="hint">Los tonos son ángulos OkLCh. Balance + desplaza el límite hacia las altas.</p>
       </Section>
     </>

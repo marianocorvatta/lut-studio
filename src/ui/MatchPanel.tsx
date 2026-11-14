@@ -3,7 +3,8 @@ import { analyzeLut, type LutDiagnostics } from '../color/analyze'
 import type { Lut3D } from '../color/lut'
 import { defaultParams } from '../color/params'
 import { bakeCpu, prepare } from '../color/pipeline'
-import { Section, Slider, Toggle } from './controls'
+import { Section, Toggle } from './controls'
+import { ParamSlider, ParamToggle } from './ParamControls'
 import { computeMatch, matchSourceKey, pickReference } from './matchActions'
 import { useApp } from './store'
 
@@ -88,22 +89,9 @@ export function MatchPanel() {
 
       {match.model && (
         <>
-          <Toggle label="Activo" checked={match.enabled} onChange={(v) => update((p) => void (p.match.enabled = v))} />
-          <Slider
-            label="Intensidad"
-            value={match.intensity}
-            min={0}
-            max={1}
-            def={1}
-            format={(v) => `${Math.round(v * 100)}%`}
-            onChange={(v) => update((p) => void (p.match.intensity = v))}
-          />
-          <Toggle
-            label="Proteger piel"
-            checked={match.protectSkin}
-            onChange={(v) => update((p) => void (p.match.protectSkin = v))}
-            title="Reduce el efecto cerca del tono de piel (el eje I de YIQ, la línea del vectorscopio)"
-          />
+          <ParamToggle id="match.enabled" label="Activo" />
+          <ParamSlider id="match.intensity" label="Intensidad" format={(v) => `${Math.round(v * 100)}%`} />
+          <ParamToggle id="match.protectSkin" label="Proteger piel" />
           <p className="hint">
             Calculado con {match.model.info.frames} frame{match.model.info.frames === 1 ? '' : 's'} ({match.model.info.samples.toLocaleString('es')}{' '}
             muestras) y "{match.model.info.reference}". Después del match se puede seguir ajustando con todas las herramientas.

@@ -4,9 +4,11 @@ import type { Lut } from '../color/lut'
 import { defaultParams, type LutSize } from '../color/params'
 import { bakeCpu, compareLuts, CONV_OFF, prepare, type Prepared } from '../color/pipeline'
 import { exportCube, openProject, pickSlotLut, projectBase, saveProject } from './actions'
-import { LutSlot, Section, Slider, Toggle } from './controls'
+import { LutSlot, Section, Toggle } from './controls'
 import { AlertsPanel } from './AlertsPanel'
 import { GradePanel } from './GradePanel'
+import { PresetPanel } from './PresetPanel'
+import { ParamSlider, ParamToggle } from './ParamControls'
 import { exportNames } from './exportNames'
 import { MatchPanel } from './MatchPanel'
 import { QualifierPanel } from './QualifierPanel'
@@ -85,43 +87,12 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
         </p>
       ))}
 
+      <PresetPanel />
+
       <Section title="Entrada (señal log)" onReset={() => update((p) => void (p.input = def.input))}>
-        <Slider
-          label="Exposición"
-          value={params.input.exposure}
-          min={-4}
-          max={4}
-          step={0.01}
-          def={0}
-          disabled={inputDisabled}
-          format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} st`}
-          onChange={(v) => update((p) => void (p.input.exposure = v))}
-          title="Decodifica Apple Log 2 a lineal, multiplica por 2^stops y vuelve a codificar"
-        />
-        <Slider
-          label="Temperatura"
-          value={params.input.temperature}
-          min={2500}
-          max={12000}
-          step={10}
-          def={6500}
-          disabled={inputDisabled}
-          format={(v) => `${v.toFixed(0)} K`}
-          onChange={(v) => update((p) => void (p.input.temperature = v))}
-          title="Adaptación cromática Bradford en lineal, en Apple Wide Gamut. Subir = más cálido."
-        />
-        <Slider
-          label="Tinte"
-          value={params.input.tint}
-          min={-100}
-          max={100}
-          step={1}
-          def={0}
-          disabled={inputDisabled}
-          format={(v) => v.toFixed(0)}
-          onChange={(v) => update((p) => void (p.input.tint = v))}
-          title="+ magenta, − verde"
-        />
+        <ParamSlider id="input.exposure" label="Exposición" disabled={inputDisabled} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} st`} />
+        <ParamSlider id="input.temperature" label="Temperatura" disabled={inputDisabled} />
+        <ParamSlider id="input.tint" label="Tinte" disabled={inputDisabled} />
         <p className="hint">
           {inputDisabled
             ? 'La etapa de entrada trabaja sobre la señal Apple Log 2: activá la conversión para usarla.'
@@ -208,28 +179,14 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
           onLoad={() => void pickSlotLut('creative')}
           onClear={() => useApp.getState().setCreativeLut(null)}
         />
-        <Toggle label="Activo" checked={params.creativeLut.enabled} onChange={(v) => update((p) => void (p.creativeLut.enabled = v))} />
-        <Slider
-          label="Intensidad"
-          value={params.creativeLut.intensity}
-          min={0}
-          max={1}
-          def={1}
-          format={(v) => `${Math.round(v * 100)}%`}
-          disabled={!creativeLut}
-          onChange={(v) => update((p) => void (p.creativeLut.intensity = v))}
-        />
+        <ParamToggle id="creativeLut.enabled" label="Activo" />
+        <ParamSlider id="creativeLut.intensity" label="Intensidad" disabled={!creativeLut} format={(v) => `${Math.round(v * 100)}%`} />
       </Section>
 
       <AlertsPanel />
 
       <Section title="Salida y exportación">
-        <Toggle
-          label="Clamp final a [0, 1]"
-          checked={params.output.clamp}
-          onChange={(v) => update((p) => void (p.output.clamp = v))}
-          title="Es el único clamp del pipeline. Las etapas intermedias nunca recortan."
-        />
+        <ParamToggle id="output.clamp" label="Clamp final a [0, 1]" />
         <label className="field field--block">
           <span>Tamaño del LUT</span>
           <select value={lutSize} onChange={(e) => useApp.getState().setLutSize(Number(e.target.value) as LutSize)}>

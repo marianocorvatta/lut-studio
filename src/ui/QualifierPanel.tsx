@@ -5,6 +5,7 @@ import { hueSwatch } from '../color/oklab'
 import { defaultParams } from '../color/params'
 import { bakeCpu, prepare } from '../color/pipeline'
 import { MAX_QUALIFIERS, newQualifier, prepareQualifiers, type Qualifier, type Window1 } from '../color/qualifiers'
+import { QUALIFIER_FIELDS } from '../params/schema'
 import { Section, Slider, Toggle } from './controls'
 import { useApp } from './store'
 
@@ -44,28 +45,31 @@ function useQualifierAlerts(list: Qualifier[]): QualAlerts[] | null {
   return res
 }
 
+/** Slider de un campo de la corrección: rango, paso, valor inicial y ayuda del esquema (QUALIFIER_FIELDS). */
+function FieldSlider({ field, label, value, format, onChange }: { field: string; label: string; value: number; format: (v: number) => string; onChange: (v: number) => void }) {
+  const f = QUALIFIER_FIELDS.find((q) => q.id === field)!
+  return <Slider label={label} value={value} min={f.min} max={f.max} step={f.step} def={f.neutral} format={format} title={f.description} onChange={onChange} />
+}
+
 function WindowSliders({
   label,
+  axis,
   w,
-  def,
-  ranges,
   format,
   onChange,
 }: {
   label: string
+  axis: 'hue' | 'chroma' | 'luma'
   w: Window1
-  def: Window1
-  ranges: [number, number, number, number]
   format: (v: number) => string
   onChange: (w: Window1) => void
 }) {
-  const [max, maxW, maxS, step] = ranges
   return (
     <div className="qual__window">
       <span className="qual__axis">{label}</span>
-      <Slider label="Centro" value={w.center} min={0} max={max} step={step} def={def.center} format={format} onChange={(v) => onChange({ ...w, center: v })} />
-      <Slider label="Ancho" value={w.width} min={0} max={maxW} step={step} def={def.width} format={format} onChange={(v) => onChange({ ...w, width: v })} />
-      <Slider label="Suavidad" value={w.soft} min={0} max={maxS} step={step} def={def.soft} format={format} onChange={(v) => onChange({ ...w, soft: v })} />
+      <FieldSlider field={`${axis}.center`} label="Centro" value={w.center} format={format} onChange={(v) => onChange({ ...w, center: v })} />
+      <FieldSlider field={`${axis}.width`} label="Ancho" value={w.width} format={format} onChange={(v) => onChange({ ...w, width: v })} />
+      <FieldSlider field={`${axis}.soft`} label="Suavidad" value={w.soft} format={format} onChange={(v) => onChange({ ...w, soft: v })} />
     </div>
   )
 }
@@ -81,7 +85,6 @@ function QualifierCard({ q, index }: { q: Qualifier; index: number }) {
       const t = p.qualifiers[index]
       if (t) fn(t)
     })
-  const def = newQualifier()
   const title = q.name || `Color ${index + 1}`
   return (
     <details className="qual" open>
@@ -137,14 +140,14 @@ function QualifierCard({ q, index }: { q: Qualifier; index: number }) {
       </summary>
       <Toggle label="Activa" checked={q.enabled} onChange={(v) => set((t) => void (t.enabled = v))} />
       <p className="qual__group">Selección (OkLCh)</p>
-      <WindowSliders label="Tono" w={q.hue} def={def.hue} ranges={[360, 180, 90, 1]} format={deg} onChange={(w) => set((t) => void (t.hue = w))} />
-      <WindowSliders label="Croma" w={q.chroma} def={def.chroma} ranges={[0.4, 0.4, 0.2, 0.001]} format={f3} onChange={(w) => set((t) => void (t.chroma = w))} />
-      <WindowSliders label="Luminancia" w={q.luma} def={def.luma} ranges={[1, 1, 0.5, 0.005]} format={f2} onChange={(w) => set((t) => void (t.luma = w))} />
+      <WindowSliders label="Tono" axis="hue" w={q.hue} format={deg} onChange={(w) => set((t) => void (t.hue = w))} />
+      <WindowSliders label="Croma" axis="chroma" w={q.chroma} format={f3} onChange={(w) => set((t) => void (t.chroma = w))} />
+      <WindowSliders label="Luminancia" axis="luma" w={q.luma} format={f2} onChange={(w) => set((t) => void (t.luma = w))} />
       <p className="qual__group">Ajustes</p>
-      <Slider label="Tono" value={q.adjust.hue} min={-180} max={180} step={1} def={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}°`} onChange={(v) => set((t) => void (t.adjust.hue = v))} title="Lleva el color seleccionado hacia otro tono" />
-      <Slider label="Saturación" value={q.adjust.sat} min={0} max={2} def={1} format={(v) => `×${v.toFixed(2)}`} onChange={(v) => set((t) => void (t.adjust.sat = v))} />
-      <Slider label="Luminancia" value={q.adjust.lum} min={-0.3} max={0.3} step={0.005} def={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(3)}`} onChange={(v) => set((t) => void (t.adjust.lum = v))} />
-      <Slider label="Intensidad" value={q.intensity} min={0} max={1} def={1} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => set((t) => void (t.intensity = v))} />
+      <FieldSlider field="adjust.hue" label="Tono" value={q.adjust.hue} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}°`} onChange={(v) => set((t) => void (t.adjust.hue = v))} />
+      <FieldSlider field="adjust.sat" label="Saturación" value={q.adjust.sat} format={(v) => `×${v.toFixed(2)}`} onChange={(v) => set((t) => void (t.adjust.sat = v))} />
+      <FieldSlider field="adjust.lum" label="Luminancia" value={q.adjust.lum} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(3)}`} onChange={(v) => set((t) => void (t.adjust.lum = v))} />
+      <FieldSlider field="intensity" label="Intensidad" value={q.intensity} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => set((t) => void (t.intensity = v))} />
     </details>
   )
 }

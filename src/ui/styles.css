@@ -1022,3 +1022,34 @@ button.icon.on {
 .row--between {
   justify-content: space-between;
 }
+.field--column {
+  flex-direction: column;
+  align-items: stretch;
+}
+.field--column textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--control);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  resize: vertical;
+  min-width: 0;
+}
+.field--block input[type='text'] {
+  background: var(--control);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 6px;
+  color: var(--text);
+}
+/* cualquier campo del panel lateral se achica al ancho disponible (opciones largas no lo ensanchan) */
+.side .field {
+  min-width: 0;
+  max-width: 100%;
+}
+.side select {
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
