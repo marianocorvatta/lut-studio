@@ -5,6 +5,7 @@ import { defaultParams, type LutSize } from '../color/params'
 import { bakeCpu, compareLuts, CONV_OFF, prepare, type Prepared } from '../color/pipeline'
 import { exportCube, openProject, pickSlotLut, saveProject } from './actions'
 import { LutSlot, Section, Slider, Toggle } from './controls'
+import { AlertsPanel } from './AlertsPanel'
 import { GradePanel } from './GradePanel'
 import { useApp } from './store'
 
@@ -206,6 +207,8 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
           onChange={(v) => update((p) => void (p.creativeLut.intensity = v))}
         />
       </Section>
+
+      <AlertsPanel />
 
       <Section title="Salida y exportación">
         <Toggle

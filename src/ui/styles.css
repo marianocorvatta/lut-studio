@@ -833,3 +833,30 @@ input[type='radio'] {
   top: auto;
   bottom: 36px;
 }
+
+/* Alertas del LUT */
+.alert {
+  display: grid;
+  grid-template-columns: 16px 10px 1fr auto 52px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+.alert--head {
+  color: var(--dim);
+  font-size: 11px;
+}
+.alert__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.alert__num {
+  text-align: right;
+  color: var(--dim);
+}
+.alert__num em {
+  font-style: normal;
+  color: var(--text);
+}

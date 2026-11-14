@@ -3,7 +3,7 @@ import { sampleLut3D, type RGB } from '../color/lut'
 import { defaultParams } from '../color/params'
 import { prepare } from '../color/pipeline'
 import type { FloatImage } from '../io/image'
-import { gridLayout, Renderer, SCOPE_SOURCE_MAX } from './renderer'
+import { gridLayout, OVERLAY_COLORS, Renderer, SCOPE_SOURCE_MAX } from './renderer'
 import { makeCanvas, wavyLut } from './testUtils'
 
 function solid(w: number, h: number, c: RGB, name = 's'): FloatImage {
@@ -110,5 +110,56 @@ describe('varios frames', () => {
     expect(all.data[bin(0.25) * 4]).toBe(100 * 50)
     expect(all.data[bin(0.75) * 4]).toBe(60 * 40)
     r.dispose()
+  })
+})
+
+describe('overlays de alertas', () => {
+  it('recorte y celdas marcadas se pintan solo en pantalla; el LUT exportado no cambia', () => {
+    const W = 64
+    const H = 32
+    const canvas = makeCanvas(W, H)
+    const r = new Renderer(canvas)
+    // mitad izquierda gris medio, mitad derecha casi blanco
+    const data = new Float32Array(W * H * 4)
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) data.set(x < W / 2 ? [0.4, 0.4, 0.4, 1] : [0.95, 0.95, 0.95, 1], (y * W + x) * 4)
+    r.setImage({ width: W, height: H, data, bitDepth: 32, format: 'TIFF', hasICC: false, warnings: [], name: 'o' })
+    r.resize()
+    r.view = { cx: W / 2, cy: H / 2, scale: 1 }
+    r.display = 'none'
+    const params = defaultParams()
+    params.grade.gain = { x: 0, y: 0, master: 1.3 } // 0.95 * 1.3 > 1: recorta; 0.4 * 1.3 no
+    const p = prepare(params, { conversionLut: null, creativeLut: null }, 'tetrahedral')
+    r.setLayers([{ lut: r.bake(p, 33), opacity: 1 }])
+    const exported = r.readBaked().data.slice()
+    r.setClipLut(r.bakeUnclamped(p, 33))
+    r.overlay = { clip: true, maskBits: 0 }
+    r.render()
+    const gl = r.gl
+    const px = new Uint8Array(4)
+    const read = (x: number) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.readPixels(x, H / 2, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px)
+      return Array.from(px.slice(0, 3)).map((v) => v / 255)
+    }
+    const hi = OVERLAY_COLORS.clipHigh
+    const right = read(W - 5)
+    for (let c = 0; c < 3; c++) expect(right[c]).toBeCloseTo(1 * 0.15 + hi[c] * 0.85, 1)
+    const left = read(5)
+    for (let c = 0; c < 3; c++) expect(left[c]).toBeCloseTo(0.52, 1) // 0.4 * 1.3, sin overlay
+
+    // marcar como quiebre todas las celdas: el lado izquierdo se pinta de amarillo
+    const flags = new Uint8Array(33 ** 3).fill(1)
+    r.setMask(flags, 33)
+    r.overlay = { clip: false, maskBits: 1 }
+    r.render()
+    const br = OVERLAY_COLORS.break
+    const leftMarked = read(5)
+    for (let c = 0; c < 3; c++) expect(leftMarked[c]).toBeCloseTo(0.52 * 0.15 + br[c] * 0.85, 1)
+
+    // nada de esto tocó el LUT que se exporta
+    expect(r.readBaked().data).toEqual(exported)
+    r.dispose()
+    canvas.remove()
   })
 })

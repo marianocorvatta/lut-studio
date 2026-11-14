@@ -6,6 +6,8 @@ import type { ScopeMode } from '../gpu/scopes'
 import type { FloatImage } from '../io/image'
 import type { FrameRef, LutRef } from '../io/project'
 import type { CompareStats } from '../color/compare'
+import { DEFAULT_ANALYZE } from '../color/analyze'
+import type { WorkerOut } from '../color/analyze.worker'
 import { commitHistory, newHistory, redoHistory, undoHistory, type History } from './history'
 
 export type AppMode = 'studio' | 'test' | 'validate'
@@ -50,6 +52,17 @@ export interface ValidationState {
   amplify: number
 }
 
+/** Overlays y umbrales de las alertas del LUT (solo pantalla: nada de esto entra al .cube). */
+export interface AlertSettings {
+  clip: boolean
+  breaks: boolean
+  inversions: boolean
+  breakK: number
+  inversionTol: number
+}
+
+export type Diagnostics = WorkerOut
+
 export interface Notice {
   id: number
   kind: 'info' | 'warn' | 'error'
@@ -86,6 +99,9 @@ interface AppState {
   /** incluir los LUTs dentro del JSON al guardar el proyecto */
   embedLuts: boolean
   scopeMode: ScopeMode | 'off'
+  alerts: AlertSettings
+  diagnostics: Diagnostics | null
+  diagBusy: boolean
   validation: ValidationState
   notices: Notice[]
   gpuError: string | null
@@ -121,6 +137,9 @@ interface AppState {
   loadState: (s: Partial<Pick<AppState, 'params' | 'lutSize' | 'interpolation' | 'conversionLut' | 'creativeLut' | 'missingLuts'>>) => void
   setEmbedLuts: (v: boolean) => void
   setScopeMode: (m: ScopeMode | 'off') => void
+  setAlerts: (patch: Partial<AlertSettings>) => void
+  setDiagnostics: (d: Diagnostics | null) => void
+  setDiagBusy: (b: boolean) => void
   updateValidation: (patch: Partial<ValidationState>) => void
   setConversionLut: (l: NamedLut | null) => void
   setCreativeLut: (l: NamedLut | null) => void
@@ -168,6 +187,15 @@ export const useApp = create<AppState>((set, get) => ({
   missingLuts: { conversion: null, creative: null },
   embedLuts: false,
   scopeMode: 'waveform',
+  alerts: {
+    clip: false,
+    breaks: false,
+    inversions: false,
+    breakK: DEFAULT_ANALYZE.breakK,
+    inversionTol: DEFAULT_ANALYZE.inversionTol,
+  },
+  diagnostics: null,
+  diagBusy: false,
   validation: {
     lutChoice: 'studio',
     fileLut: null,
@@ -255,6 +283,9 @@ export const useApp = create<AppState>((set, get) => ({
   },
   setEmbedLuts: (embedLuts) => set({ embedLuts }),
   setScopeMode: (scopeMode) => set({ scopeMode }),
+  setAlerts: (patch) => set((s) => ({ alerts: { ...s.alerts, ...patch } })),
+  setDiagnostics: (diagnostics) => set({ diagnostics }),
+  setDiagBusy: (diagBusy) => set({ diagBusy }),
   updateValidation: (patch) => set((s) => ({ validation: { ...s.validation, ...patch } })),
   setConversionLut: (conversionLut) => set((s) => ({ conversionLut, missingLuts: { ...s.missingLuts, conversion: null } })),
   setCreativeLut: (creativeLut) => set((s) => ({ creativeLut, missingLuts: { ...s.missingLuts, creative: null } })),

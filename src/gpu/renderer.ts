@@ -91,11 +91,27 @@ vec3 displayTransform(vec3 v, int mode) {
 }
 `
 
+/** Colores del overlay de alertas (solo pantalla). */
+export const OVERLAY_COLORS = {
+  clipLow: [0.15, 0.45, 1.0],
+  clipHigh: [1.0, 0.2, 0.15],
+  break: [1.0, 0.85, 0.0],
+  inversion: [1.0, 0.2, 0.9],
+} as const
+
+const v3 = (c: readonly number[]) => `vec3(${c.map((x) => x.toFixed(3)).join(', ')})`
+
 const DISPLAY_FS = `#version 300 es
 precision highp float;
 precision highp int;
 uniform sampler2D uBefore;
 uniform sampler2D uAfter;
+uniform sampler2D uClip;   // salida sin el clamp final (o la salida misma)
+uniform int uShowClip;
+uniform sampler2D uMask;   // bits por nodo del LUT (RGBA8, r = bits / 255)
+uniform sampler2D uMaskSrc; // color en el dominio del LUT de la máscara
+uniform int uMaskN;
+uniform int uMaskBits;     // 1 quiebres, 2 inversiones
 uniform int uCompare; // 0 off, 1 split, 2 before
 uniform float uSplit;
 uniform float uLine;
@@ -110,6 +126,26 @@ void main() {
   bool before = uCompare == 2 || (uCompare == 1 && x < uSplit);
   vec4 s = before ? texelFetch(uBefore, p, 0) : texelFetch(uAfter, p, 0);
   vec3 c = s.a > 0.5 ? displayTransform(s.rgb, uDisplay) : uBackground;
+  if (!before && s.a > 0.5) {
+    if (uMaskBits != 0) {
+      // celda del LUT donde cae el color de entrada: problema si lo tiene alguno de sus 8 nodos
+      vec3 x = clamp(texelFetch(uMaskSrc, p, 0).rgb, 0.0, 1.0) * float(uMaskN - 1);
+      ivec3 i0 = min(ivec3(floor(x)), ivec3(uMaskN - 2));
+      int bits = 0;
+      for (int k = 0; k < 8; k++) {
+        ivec3 q = i0 + ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+        bits |= int(texelFetch(uMask, ivec2(q.r + q.g * uMaskN, q.b), 0).r * 255.0 + 0.5);
+      }
+      bits &= uMaskBits;
+      if ((bits & 2) != 0) c = mix(c, ${v3(OVERLAY_COLORS.inversion)}, 0.85);
+      else if ((bits & 1) != 0) c = mix(c, ${v3(OVERLAY_COLORS.break)}, 0.85);
+    }
+    if (uShowClip == 1) {
+      vec3 u = texelFetch(uClip, p, 0).rgb;
+      if (any(lessThan(u, vec3(0.0)))) c = mix(c, ${v3(OVERLAY_COLORS.clipLow)}, 0.85);
+      else if (any(greaterThan(u, vec3(1.0)))) c = mix(c, ${v3(OVERLAY_COLORS.clipHigh)}, 0.85);
+    }
+  }
   if (uCompare == 1 && abs(x - uSplit) < uLine) c = vec3(0.85);
   o = vec4(c, 1.0);
 }`
@@ -119,6 +155,10 @@ class Chain {
   before: Target | null = null
   ping: Target | null = null
   pong: Target | null = null
+  /** salida sin el clamp final (overlay de recorte) */
+  clip: Target | null = null
+  /** color de cada píxel en el dominio del LUT de la máscara */
+  mask: Target | null = null
   width = 0
   height = 0
   private gl: WebGL2RenderingContext
@@ -133,6 +173,8 @@ class Chain {
     this.before = createTarget(this.gl, w, h)
     this.ping = createTarget(this.gl, w, h)
     this.pong = createTarget(this.gl, w, h)
+    this.clip = createTarget(this.gl, w, h)
+    this.mask = createTarget(this.gl, w, h)
     this.width = w
     this.height = h
     return true
@@ -142,7 +184,9 @@ class Chain {
     disposeTarget(this.gl, this.before)
     disposeTarget(this.gl, this.ping)
     disposeTarget(this.gl, this.pong)
-    this.before = this.ping = this.pong = null
+    disposeTarget(this.gl, this.clip)
+    disposeTarget(this.gl, this.mask)
+    this.before = this.ping = this.pong = this.clip = this.mask = null
   }
 }
 
@@ -200,6 +244,13 @@ export class Renderer {
   private gridChain: Chain
   private lutCache: LutCache
   private baker: Baker
+  /** horneadores auxiliares (sin clamp, look solo, conversión): diagnóstico, overlays y "solo look" */
+  private auxBakers = new Map<string, Baker>()
+  private clipLut: GpuLut | null = null
+  private maskSrcLut: GpuLut | null = null
+  private maskTex: WebGLTexture | null = null
+  private maskN = 0
+  private dummyMask: WebGLTexture | null = null
   private scopes: Scopes | null = null
   private layers: RenderLayer[] = []
   private p3Canvas = false
@@ -216,6 +267,8 @@ export class Renderer {
   grid = false
   /** cantidad de versiones reducidas generadas (para tests: una por frame cargado) */
   thumbsCreated = 0
+  /** overlay de alertas: recorte (salida fuera de 0..1 antes del clamp final) y bits de celdas a marcar */
+  overlay = { clip: false, maskBits: 0 }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -340,6 +393,73 @@ export class Renderer {
     return this.baker.bake(p, size)
   }
 
+  /**
+   * Hornea el mismo pipeline sin el clamp final en un horneador aparte. Lo usan el overlay de recorte y el
+   * diagnóstico; el LUT que se ve y se exporta no cambia.
+   */
+  bakeUnclamped(p: Prepared, size: number): GpuLut {
+    return this.bakeAux('unclamped', { ...p, clamp: false }, size)
+  }
+
+  readUnclamped(): Lut3D {
+    return this.readAux('unclamped')
+  }
+
+  /** Hornea en un horneador auxiliar identificado por `key` (cada uno conserva su último LUT). */
+  bakeAux(key: string, p: Prepared, size: number): GpuLut {
+    let b = this.auxBakers.get(key)
+    if (!b) {
+      b = new Baker(this.g)
+      this.auxBakers.set(key, b)
+    }
+    return b.bake(p, size)
+  }
+
+  readAux(key: string): Lut3D {
+    const b = this.auxBakers.get(key)
+    if (!b) throw new Error(`Todavía no se horneó el LUT auxiliar "${key}".`)
+    return b.read()
+  }
+
+  /** LUT que lleva cada píxel al dominio de la máscara (null: el color de entrada tal cual). */
+  setMaskSource(lut: GpuLut | null): void {
+    this.maskSrcLut = lut
+  }
+
+  /** LUT sin clamp para el overlay de recorte; null: se usa la salida de la pila de LUTs. */
+  setClipLut(lut: GpuLut | null): void {
+    this.clipLut = lut
+  }
+
+  /** Bits por nodo (FLAG_*) del diagnóstico, en el orden del .cube. null: sin marcas. */
+  setMask(flags: Uint8Array | null, n: number): void {
+    const { gl } = this.g
+    if (this.maskTex) gl.deleteTexture(this.maskTex)
+    this.maskTex = null
+    this.maskN = 0
+    if (!flags) return
+    const rgba = new Uint8Array(flags.length * 4)
+    for (let i = 0; i < flags.length; i++) rgba[i * 4] = flags[i]
+    this.maskTex = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, this.maskTex)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, n * n, n, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    this.maskN = n
+  }
+
+  private get dummy(): WebGLTexture {
+    const { gl } = this.g
+    if (!this.dummyMask) {
+      this.dummyMask = gl.createTexture()
+      gl.bindTexture(gl.TEXTURE_2D, this.dummyMask)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4))
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    }
+    return this.dummyMask
+  }
+
   /** LUT horneado leído de la GPU (lo que se exporta). */
   readBaked(): Lut3D {
     return this.baker.read()
@@ -412,24 +532,29 @@ export class Renderer {
     drawTo(gl, before)
     let src = before
     if (!applyLayers) return src
-    const interp = this.interpolation === 'trilinear' ? 0 : 1
+    if (this.overlay.clip && this.clipLut) this.applyLut(this.clipLut, 1, before, chain.clip!)
+    if (this.overlay.maskBits && this.maskTex && this.maskSrcLut) this.applyLut(this.maskSrcLut, 1, before, chain.mask!)
     for (const layer of this.layers) {
       const lut = isGpuLut(layer.lut) ? layer.lut : this.lutCache.get(layer.lut)
       const dst = src === chain.ping ? chain.pong! : chain.ping!
-      this.lutProg
-        .use()
-        .tex('uSrc', 0, src.tex)
-        .tex('uLut', 1, lut.tex)
-        .i('uSize', lut.size)
-        .i('uKind', lut.kind === '3D' ? 0 : 1)
-        .i('uInterp', interp)
-        .f('uOpacity', layer.opacity)
-        .v3('uDomMin', lut.domainMin)
-        .v3('uDomMax', lut.domainMax)
-      drawTo(gl, dst)
+      this.applyLut(lut, layer.opacity, src, dst)
       src = dst
     }
     return src
+  }
+
+  private applyLut(lut: GpuLut, opacity: number, src: Target, dst: Target): void {
+    this.lutProg
+      .use()
+      .tex('uSrc', 0, src.tex)
+      .tex('uLut', 1, lut.tex)
+      .i('uSize', lut.size)
+      .i('uKind', lut.kind === '3D' ? 0 : 1)
+      .i('uInterp', this.interpolation === 'trilinear' ? 0 : 1)
+      .f('uOpacity', opacity)
+      .v3('uDomMin', lut.domainMin)
+      .v3('uDomMax', lut.domainMax)
+    drawTo(this.g.gl, dst)
   }
 
   private get mainSource(): Source | null {
@@ -457,9 +582,21 @@ export class Renderer {
     return gridLayout(this.frames.length, this.canvas.width, this.canvas.height, Math.round(8 * dpr))
   }
 
-  private displayUniforms(W: number, splitPx: number): Program {
+  /** Uniforms de la pasada de display, incluidos los overlays de alertas de `chain` con salida `out`. */
+  private displayUniforms(W: number, splitPx: number, chain: Chain, out: Target): Program {
+    const maskOn = this.maskTex !== null && this.overlay.maskBits !== 0
+    // crear las texturas ANTES de enlazar unidades: crear una textura cambia el binding de la unidad activa
+    const mask = maskOn ? this.maskTex! : this.dummy
     return this.displayProg
       .use()
+      .tex('uBefore', 0, chain.before!.tex)
+      .tex('uAfter', 1, out.tex)
+      .tex('uClip', 2, this.clipLut ? chain.clip!.tex : out.tex)
+      .i('uShowClip', this.overlay.clip ? 1 : 0)
+      .tex('uMask', 3, mask)
+      .tex('uMaskSrc', 4, maskOn && this.maskSrcLut ? chain.mask!.tex : chain.before!.tex)
+      .i('uMaskN', Math.max(2, this.maskN))
+      .i('uMaskBits', maskOn ? this.overlay.maskBits : 0)
       .i('uCompare', this.compare === 'off' ? 0 : this.compare === 'split' ? 1 : 2)
       .f('uSplit', splitPx)
       .f('uLine', Math.max(1, W / Math.max(1, this.canvas.clientWidth)) * 0.75)
@@ -477,9 +614,7 @@ export class Renderer {
     const out = this.process(this.view_, this.mainSource, this.view, this.compare !== 'before')
     this.processed = out
 
-    this.displayUniforms(W, this.split * W)
-      .tex('uBefore', 0, this.view_.before!.tex)
-      .tex('uAfter', 1, out.tex)
+    this.displayUniforms(W, this.split * W, this.view_, out)
     gl.uniform2i(this.displayProg.loc('uOffset'), 0, 0)
     drawTo(gl, null, W, H)
   }
@@ -500,9 +635,7 @@ export class Renderer {
       const view = { cx: src.w / 2, cy: src.h / 2, scale: Math.min(cell.w / src.w, cell.h / src.h) }
       const out = this.process(this.gridChain, src, view, this.compare !== 'before')
       const y0 = H - cell.y - cell.h // viewport de GL: origen abajo
-      this.displayUniforms(W, this.split * cell.w)
-        .tex('uBefore', 0, this.gridChain.before!.tex)
-        .tex('uAfter', 1, out.tex)
+      this.displayUniforms(W, this.split * cell.w, this.gridChain, out)
       gl.uniform2i(this.displayProg.loc('uOffset'), cell.x, y0)
       gl.bindFramebuffer(gl.FRAMEBUFFER, null)
       gl.viewport(cell.x, y0, cell.w, cell.h)
@@ -549,6 +682,9 @@ export class Renderer {
     this.frames = []
     this.lutCache.dispose()
     this.baker.dispose()
+    for (const b of this.auxBakers.values()) b.dispose()
+    if (this.maskTex) gl.deleteTexture(this.maskTex)
+    if (this.dummyMask) gl.deleteTexture(this.dummyMask)
     this.view_.dispose()
     this.scopeChain.dispose()
     this.gridChain.dispose()

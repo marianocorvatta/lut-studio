@@ -5,6 +5,7 @@ import type { RenderLayer } from '../gpu/renderer'
 import { readFile } from '../io/platform'
 import { exportCube, handleDroppedFiles, openImage, openProject, saveProject } from './actions'
 import { useApp, type AppMode } from './store'
+import { useDiagnostics } from './diagnostics'
 import { FrameBar } from './FrameBar'
 import { ScopesPanel } from './ScopesPanel'
 import { StudioPanel } from './StudioPanel'
@@ -45,6 +46,7 @@ export function App() {
     [params, conversionLut, creativeLut, interpolation],
   )
   const bake = useMemo(() => ({ prepared, size: lutSize }), [prepared, lutSize])
+  useDiagnostics(prepared, lutSize, mode === 'studio')
   const validation = useApp((s) => s.validation)
   const validateImage = useMemo(
     () => (mode === 'validate' ? validationImage(validation.view) : null),

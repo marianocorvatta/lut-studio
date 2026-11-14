@@ -16,6 +16,7 @@ Abrís un frame (TIFF o PNG de 16 bits), lo convertís a Rec.709, lo corregís y
   - split toning;
   - un LUT creativo con intensidad regulable.
 - **Varios frames:** hasta 6 frames a la vez, con etiqueta editable. Se edita uno (el principal) y la grilla muestra todos con el mismo LUT. Los scopes pueden mostrar el principal o todos combinados.
+- **Alertas del LUT:** overlay con falso color para los píxeles que recortan (por debajo de 0 o por encima de 1 antes del clamp final), y diagnóstico de quiebres e inversiones de luminancia en el look. Muestra cuántas celdas del LUT tienen cada problema y qué porcentaje de los píxeles de tus frames cae en ellas. Se calcula en un worker, sin trabar los controles.
 - **Modo "Probar .cube":** apila varios LUTs con orden, opacidad y on/off, y los compara con el original con una cortina.
 - **Scopes:** waveform, parade RGB, vectorscopio e histograma, calculados sobre la imagen completa.
 - **Proyectos:** se guardan en JSON. Hay deshacer/rehacer y atajos de teclado.

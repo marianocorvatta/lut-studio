@@ -6,10 +6,15 @@ import { GpuUnsupportedError } from '../gpu/gl'
 import { Renderer, type Rect, type RenderLayer } from '../gpu/renderer'
 import { useApp } from './store'
 
-/** Renderer activo, para acciones fuera del componente (exportar, scopes). */
-export const viewerApi: { renderer: Renderer | null; listeners: Set<(r: Renderer) => void> } = {
+/** Renderer activo, para acciones fuera del componente (exportar, scopes, diagnóstico). */
+export const viewerApi: {
+  renderer: Renderer | null
+  listeners: Set<(r: Renderer) => void>
+  requestRender: (() => void) | null
+} = {
   renderer: null,
   listeners: new Set(),
+  requestRender: null,
 }
 
 export interface ViewerProps {
@@ -66,6 +71,8 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
   const compare = useApp((s) => s.compare)
   const split = useApp((s) => s.split)
   const fitNonce = useApp((s) => s.fitNonce)
+  const alerts = useApp((s) => s.alerts)
+  const diagnostics = useApp((s) => s.diagnostics)
   const oneToOneNonce = useApp((s) => s.oneToOneNonce)
 
   const requestRender = useCallback(() => {
@@ -97,6 +104,7 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
     }
     rendererRef.current = r
     viewerApi.renderer = r
+    viewerApi.requestRender = requestRender
     const ro = new ResizeObserver(() => requestRender())
     ro.observe(canvas)
     const onLost = (ev: Event) => {
@@ -111,7 +119,10 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
       rafRef.current = 0
       r.dispose()
       rendererRef.current = null
-      if (viewerApi.renderer === r) viewerApi.renderer = null
+      if (viewerApi.renderer === r) {
+        viewerApi.renderer = null
+        viewerApi.requestRender = null
+      }
     }
   }, [requestRender])
 
@@ -149,13 +160,34 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
     const r = rendererRef.current
     if (!r) return
     try {
-      if (bake) r.setLayers([{ lut: r.bake(bake.prepared, bake.size), opacity: 1 }])
-      else r.setLayers(layers ?? [])
+      if (bake) {
+        r.setLayers([{ lut: r.bake(bake.prepared, bake.size), opacity: 1 }])
+        // overlay de recorte en vivo: el mismo pipeline sin el clamp final (no se exporta)
+        if (useApp.getState().alerts.clip) r.setClipLut(r.bakeUnclamped(bake.prepared, bake.size))
+      } else {
+        r.setLayers(layers ?? [])
+        r.setClipLut(null)
+      }
     } catch (e) {
       useApp.getState().notify('error', e instanceof Error ? e.message : String(e))
     }
     requestRender()
   }, [layers, bake, requestRender])
+
+  // overlays de alertas (solo en el Estudio): recorte, quiebres e inversiones
+  const studio = Boolean(bake)
+  useEffect(() => {
+    const r = rendererRef.current
+    if (!r) return
+    r.overlay = studio
+      ? { clip: alerts.clip, maskBits: (alerts.breaks ? 1 : 0) | (alerts.inversions ? 2 : 0) }
+      : { clip: false, maskBits: 0 }
+    if (studio && alerts.clip && bake) r.setClipLut(r.bakeUnclamped(bake.prepared, bake.size))
+    const d = studio ? diagnostics : null
+    r.setMask(d ? d.lookFlags : null, d?.size ?? 0)
+    requestRender()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studio, alerts.clip, alerts.breaks, alerts.inversions, diagnostics, requestRender])
 
   useEffect(() => {
     const r = rendererRef.current
