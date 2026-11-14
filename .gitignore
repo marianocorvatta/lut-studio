@@ -13,3 +13,4 @@ src-tauri/target
 public/_smoke
 .playwright-mcp
 *.tsbuildinfo
+tiff-examples-apple-log-2/
