@@ -5,6 +5,7 @@ import { decodeImage, type FloatImage } from '../io/image'
 import { frameHash, lutHash, parseProject, serializeProject } from '../io/project'
 import { CUBE_ACCEPT, decodeText, IMAGE_ACCEPT, pickFiles, PROJECT_ACCEPT, saveFile, type PickedFile } from '../io/platform'
 import { exportNames } from './exportNames'
+import { loadReferenceFile } from './matchActions'
 import { MAX_FRAMES, useApp } from './store'
 import { viewerApi } from './Viewer'
 
@@ -114,13 +115,19 @@ export function saveProject(): void {
     frames: app.frames.map((f) => ({ label: f.label, image: f.image })),
     activeFrame: Math.max(0, app.frames.findIndex((f) => f.id === app.activeFrame)),
     embedFrames: app.embedFrames,
+    reference: app.reference ? { name: app.reference.name, bytes: app.reference.bytes } : null,
+    embedReference: app.embedReference,
   })
   saveFile(`${projectBase()}.lutstudio.json`, text, 'application/json')
-  const what = [app.embedLuts ? 'los LUTs' : null, app.embedFrames && app.frames.length ? 'los frames' : null].filter(Boolean)
+  const what = [
+    app.embedLuts ? 'los LUTs' : null,
+    app.embedFrames && app.frames.length ? 'los frames' : null,
+    app.embedReference && app.reference ? 'la referencia' : null,
+  ].filter(Boolean)
   app.notify(
     'info',
     `Proyecto guardado${what.length ? ` con ${what.join(' y ')} incluidos` : ''}. ${
-      what.length < 2 ? 'Lo que no se incluye queda como referencia.' : ''
+      what.length < 3 ? 'Lo que no se incluye se guarda por nombre y huella.' : ''
     }`.trim(),
   )
 }
@@ -151,11 +158,19 @@ export function loadProjectText(name: string, text: string): void {
       )
       app.setMissingFrames(p.frames.filter((f) => !f.image).map((f) => f.ref))
     } else app.setMissingFrames([])
+    // referencia del Match: el modelo ya viene en params.match; el archivo, si se incluyó
+    if (p.reference?.bytes) void loadReferenceFile({ name: p.reference.ref.name, bytes: p.reference.bytes }, { recompute: false })
+    else {
+      app.setReference(null)
+      app.setMissingReference(p.reference?.ref ?? null)
+    }
+    app.setMatchKey(null)
     for (const w of p.warnings) app.notify('warn', w)
     const missing = [
       conv && !conv.lut ? conv.ref.name : null,
       crea && !crea.lut ? crea.ref.name : null,
       ...p.frames.filter((f) => !f.image).map((f) => `${f.ref.name}${f.ref.label ? ` (${f.ref.label})` : ''}`),
+      p.reference && !p.reference.bytes ? `${p.reference.ref.name} (referencia del Match; el match guardado se sigue usando)` : null,
     ].filter(Boolean)
     app.notify(
       missing.length ? 'warn' : 'info',

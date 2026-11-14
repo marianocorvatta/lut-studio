@@ -3,7 +3,7 @@ import { identityLut3D } from '../color/lut'
 import { defaultParams } from '../color/params'
 import { commitHistory, newHistory, redoHistory, undoHistory } from '../ui/history'
 import type { FloatImage } from './image'
-import { frameHash, lutHash, parseProject, ProjectError, serializeProject } from './project'
+import { bytesHash, frameHash, lutHash, parseProject, ProjectError, serializeProject } from './project'
 
 function sampleLut() {
   const lut = identityLut3D(5)
@@ -157,5 +157,41 @@ describe('proyecto con varios frames', () => {
     const back = parseProject(JSON.stringify(raw))
     expect(back.frames).toEqual([])
     expect(back.activeFrame).toBe(0)
+  })
+})
+
+describe('proyecto con match', () => {
+  const base = { params: defaultParams(), lutSize: 33 as const, interpolation: 'tetrahedral' as const, conversionLut: null, creativeLut: null, embedLuts: false }
+  const model = {
+    curve: { x: [0.1, 0.5, 0.9], y: [0.12, 0.48, 0.93] },
+    bands: [
+      { A: [1.1, 0.02, 0.02, 0.95], t: [0.01, -0.005] },
+      { A: [1, 0, 0, 1], t: [0, 0] },
+      { A: [0.9, -0.01, -0.01, 1.05], t: [-0.004, 0.012] },
+    ],
+    info: { reference: 'ref.jpg', frames: 2, samples: 1234 },
+  } as never
+  const bytes = Uint8Array.from({ length: 300 }, (_, i) => (i * 37) % 256).buffer
+
+  it('el modelo viaja en los parámetros; la referencia por huella o incluida', () => {
+    const params = defaultParams()
+    params.match = { enabled: true, intensity: 0.7, protectSkin: true, model }
+    for (const embed of [false, true]) {
+      const back = parseProject(serializeProject({ ...base, params, reference: { name: 'ref.jpg', bytes }, embedReference: embed }))
+      expect(back.params.match).toEqual(params.match)
+      expect(back.reference?.ref.name).toBe('ref.jpg')
+      expect(back.reference?.ref.hash).toBe(bytesHash(new Uint8Array(bytes)))
+      if (embed) expect(new Uint8Array(back.reference!.bytes!)).toEqual(new Uint8Array(bytes))
+      else expect(back.reference?.bytes).toBeNull()
+    }
+  })
+
+  it('un proyecto anterior (sin match) se abre con el match apagado y sin modelo', () => {
+    const raw = JSON.parse(serializeProject(base))
+    delete raw.params.match
+    delete raw.reference
+    const back = parseProject(JSON.stringify(raw))
+    expect(back.params.match.model).toBeNull()
+    expect(back.reference).toBeNull()
   })
 })

@@ -19,6 +19,7 @@ Abrís un frame (TIFF o PNG de 16 bits), lo convertís a Rec.709, lo corregís y
 - **Alertas del LUT:** overlay con falso color para los píxeles que recortan (por debajo de 0 o por encima de 1 antes del clamp final), y diagnóstico de quiebres e inversiones de luminancia en el look. Muestra cuántas celdas del LUT tienen cada problema y qué porcentaje de los píxeles de tus frames cae en ellas. Se calcula en un worker, sin trabar los controles.
 - **Exportar solo el look:** además del LUT completo (log → Rec.709 + look), un `.cube` de Rec.709 γ2.4 a Rec.709 γ2.4 con solo la parte creativa, para usar después de un Color Space Transform o con material de otras cámaras. La vista previa "como lo vería con solo el look" aplica la conversión y después ese LUT, en cadena. Con la entrada en neutro coincide con el LUT completo salvo el error de interpolar dos LUTs en cadena (en un look típico, promedio 1.1e-3 en 33³ y 3.9e-4 en 65³; el máximo, 0.09 y 0.06, aparece cerca del negro en colores saturados).
 - **Línea de tono de piel en el vectorscopio:** el eje I de YIQ calculado con la misma matemática Cb/Cr Rec.709 que el vectorscopio y las ruedas (130.4°; los 123° habituales corresponden al U/V analógico de Rec.601). Se puede ocultar.
+- **Match con una imagen de referencia:** cargás una foto o un frame con el look que buscás y obtenés un punto de partida. Es una etapa al comienzo de la parte creativa, en Oklab: una curva de luminancia monótona y suave que acerca el histograma de tus frames al de la referencia, y un ajuste de color por sombras, medios y altas que acerca media y covarianza. Usa todos los frames cargados, tiene intensidad, on/off y "proteger piel". La referencia se convierte a Rec.709 γ2.4 según su perfil ICC (sRGB, Display P3, Adobe RGB…); si no trae perfil, se asume sRGB.
 - **Modo "Probar .cube":** apila varios LUTs con orden, opacidad y on/off, y los compara con el original con una cortina.
 - **Scopes:** waveform, parade RGB, vectorscopio e histograma, calculados sobre la imagen completa.
 - **Proyectos:** se guardan en JSON. Hay deshacer/rehacer y atajos de teclado.
@@ -71,6 +72,7 @@ Queda en http://localhost:8173. Para detenerla: `docker compose down`.
 - Los primarios de Apple Wide Gamut no están verificados contra el documento oficial de Apple. Están marcados en `src/color/appleLog2.constants.ts`, y la app avisa cuando se usan. Solo afectan a la conversión por fórmula y al balance de blancos, no a la conversión por `.cube`.
 - La conversión por fórmula no reproduce el LUT oficial de Apple, porque el tone mapping a Rec.709 es una elección propia. Para resultados fieles, usá la conversión por `.cube`.
 - No lee EXR.
+- Del ICC de la referencia se soportan los perfiles RGB de matriz y curvas (los habituales). Con perfiles de tablas, de gris o CMYK se asume sRGB y se avisa.
 
 ## Stack
 

@@ -3,6 +3,7 @@ import { parseCube, writeCube } from '../color/cube'
 import { identityLut3D, sampleLut3D, type Interpolation, type Lut1D, type Lut3D } from '../color/lut'
 import { defaultParams } from '../color/params'
 import { prepareLookOnly } from '../color/variants'
+import { computeMatchModel } from '../color/match'
 import { bakeCpu, evalPipeline, prepare } from '../color/pipeline'
 import type { FloatImage } from '../io/image'
 import { Baker } from './baker'
@@ -293,6 +294,62 @@ describe('solo look', () => {
       const gpu = r.readAux('look')
       const cpu = bakeCpu(p, 33)
       expect(diff(gpu.data, cpu.data).max).toBeLessThan(1e-4)
+    }
+    r.dispose()
+  })
+})
+
+describe('etapa Match', () => {
+  it('CPU vs GPU: el match solo y con conversión < 1e-4 en todos los nodos; con grade encima, según el condicionamiento', () => {
+    const r = new Renderer(makeCanvas(16, 16))
+    const rand = rng(77)
+    const n = 4000
+    const src = new Float32Array(n * 3)
+    const ref = new Float32Array(n * 3)
+    for (let i = 0; i < n * 3; i += 3) {
+      const k = 0.2 + rand() * 0.7
+      src.set([k * (0.8 + rand() * 0.4), k * (0.7 + rand() * 0.4), k * (0.6 + rand() * 0.4)], i)
+      ref.set([Math.min(1, src[i] * 1.1), src[i + 1], src[i + 2] * 0.85], i)
+    }
+    const model = computeMatchModel(src, ref, { reference: 'r', frames: 1 })
+    const N = 33
+    for (const [conv, grade, protectSkin] of [
+      [false, false, false],
+      [false, false, true],
+      [true, false, true],
+      [true, true, false],
+      [true, true, true],
+    ] as const) {
+      const params = defaultParams()
+      params.output.clamp = false
+      params.conversion.enabled = conv
+      params.match = { enabled: true, intensity: 0.8, protectSkin, model }
+      if (grade) {
+        params.grade.contrast = 1.1
+        params.grade.saturation = 1.1
+      }
+      const p = prepare(params, { conversionLut: wavyLut(33, 5), creativeLut: null }, 'tetrahedral')
+      expect(p.match).not.toBeNull()
+      r.bake(p, N)
+      const gpu = r.readBaked().data
+      const cpu = bakeCpu(p, N).data
+      if (!grade) {
+        expect(diff(gpu, cpu).max).toBeLessThan(TOL)
+        continue
+      }
+      // Con el grade encima: el match deja en colores saturados cerca del negro un error de float32 de ~2e-5 (al
+      // volver de Oklab a lineal se restan términos casi iguales y el valor cae en el toe, donde la codificación
+      // multiplica por 56); el grade lo amplifica. Es un límite de float32 que la sensibilidad entrada -> salida no
+      // ve (se cancela dentro del pipeline). Medido: 1 nodo de 35 937 sobre 1e-4 (1.5e-4).
+      let over = 0
+      let max = 0
+      for (let i = 0; i < gpu.length; i += 3) {
+        const err = Math.max(Math.abs(gpu[i] - cpu[i]), Math.abs(gpu[i + 1] - cpu[i + 1]), Math.abs(gpu[i + 2] - cpu[i + 2]))
+        if (err >= TOL) over++
+        max = Math.max(max, err)
+      }
+      expect(over / N ** 3).toBeLessThan(0.001)
+      expect(max).toBeLessThan(2e-4)
     }
     r.dispose()
   })

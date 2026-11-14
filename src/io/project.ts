@@ -46,6 +46,15 @@ export interface ProjectFile {
   frames?: FrameRef[]
   /** índice del frame principal */
   activeFrame?: number
+  /** imagen de referencia del Match (el modelo calculado va en params.match) */
+  reference?: ReferenceRef | null
+}
+
+/** Referencia del Match: por nombre y huella del archivo, o con el archivo original incluido (base64). */
+export interface ReferenceRef {
+  name: string
+  hash: string
+  file?: string
 }
 
 function fnv(bytes: Uint8Array, h = 0x811c9dc5): number {
@@ -64,14 +73,19 @@ export function frameHash(img: Pick<FloatImage, 'width' | 'height' | 'data'>): s
   return fnv(asBytes(img.data), h).toString(16).padStart(8, '0')
 }
 
-function toBase64(bytes: Uint8Array): string {
+/** Huella de un archivo (FNV-1a de sus bytes). */
+export function bytesHash(bytes: Uint8Array): string {
+  return fnv(bytes).toString(16).padStart(8, '0')
+}
+
+export function toBase64(bytes: Uint8Array): string {
   let bin = ''
   const CH = 0x8000
   for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode(...bytes.subarray(i, i + CH))
   return btoa(bin)
 }
 
-function fromBase64(b64: string): Uint8Array {
+export function fromBase64(b64: string): Uint8Array {
   const bin = atob(b64)
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
@@ -187,6 +201,8 @@ export interface ProjectInput {
   frames?: { label: string; image: FloatImage }[]
   activeFrame?: number
   embedFrames?: boolean
+  reference?: { name: string; bytes: ArrayBuffer } | null
+  embedReference?: boolean
 }
 
 export function serializeProject(p: ProjectInput, now = new Date()): string {
@@ -201,6 +217,13 @@ export function serializeProject(p: ProjectInput, now = new Date()): string {
     creativeLut: p.creativeLut ? lutRef(p.creativeLut.name, p.creativeLut.lut, p.embedLuts) : null,
     frames: (p.frames ?? []).map((f) => frameRef(f.label, f.image, p.embedFrames ?? false)),
     activeFrame: p.activeFrame ?? 0,
+    reference: p.reference
+      ? {
+          name: p.reference.name,
+          hash: bytesHash(new Uint8Array(p.reference.bytes)),
+          ...(p.embedReference ? { file: toBase64(new Uint8Array(p.reference.bytes)) } : {}),
+        }
+      : null,
   }
   return JSON.stringify(file, null, 2)
 }
@@ -222,6 +245,8 @@ export interface LoadedProject {
   /** frames del proyecto: con imagen si venían incluidos */
   frames: { ref: FrameRef; image: FloatImage | null }[]
   activeFrame: number
+  /** referencia del Match, con el archivo si venía incluido */
+  reference: { ref: ReferenceRef; bytes: ArrayBuffer | null } | null
   warnings: string[]
 }
 
@@ -271,6 +296,25 @@ function parseRef(raw: unknown, label: string, warnings: string[]): { ref: LutRe
   }
 }
 
+function parseReference(raw: unknown, warnings: string[]): LoadedProject['reference'] {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Partial<ReferenceRef>
+  if (typeof r.name !== 'string' || typeof r.hash !== 'string') {
+    warnings.push('Se ignoró la referencia del Match: está incompleta.')
+    return null
+  }
+  const ref: ReferenceRef = { name: r.name, hash: r.hash, file: r.file }
+  if (typeof r.file !== 'string') return { ref, bytes: null }
+  try {
+    const bytes = fromBase64(r.file)
+    if (bytesHash(bytes) !== ref.hash) warnings.push(`La referencia incluida ("${ref.name}") no coincide con su huella: se usa igual.`)
+    return { ref, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer }
+  } catch {
+    warnings.push(`No se pudo leer la referencia incluida ("${ref.name}").`)
+    return { ref, bytes: null }
+  }
+}
+
 export function parseProject(text: string): LoadedProject {
   let raw: unknown
   try {
@@ -291,6 +335,7 @@ export function parseProject(text: string): LoadedProject {
     creativeLut: parseRef(f.creativeLut, 'LUT creativo', warnings),
     frames: parseFrames(f.frames, warnings),
     activeFrame: Math.max(0, Math.floor(Number(f.activeFrame) || 0)),
+    reference: parseReference(f.reference, warnings),
     warnings,
   }
 }

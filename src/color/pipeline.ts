@@ -9,6 +9,7 @@
  */
 import { appleLogDecode, appleLogEncode, AWG_TO_REC709, formulaToneMap, inputMatrix } from './appleLog'
 import { evalGrade, prepareGrade, type PreparedGrade } from './grade'
+import { evalMatch, prepareMatch, type PreparedMatch } from './match'
 import type { Interpolation, Lut, Lut3D, RGB } from './lut'
 import { isIdentity3, mul3, type Mat3 } from './mat3'
 import { sampleLut } from './lut'
@@ -35,6 +36,8 @@ export interface Prepared {
   inputMatrix: Mat3
   /** conversión por fórmula: AWG lineal -> Rec.709 lineal, con la etapa de entrada ya incluida */
   formulaMatrix: Mat3
+  /** etapa Match (al comienzo de la etapa creativa); null = apagada */
+  match: PreparedMatch | null
   /** etapa creativa (sobre Rec.709) */
   grade: PreparedGrade
   creativeLut: Lut | null
@@ -66,6 +69,7 @@ export function prepare(params: LookParams, res: PipelineResources, interp: Inte
     inputOn,
     inputMatrix: inM,
     formulaMatrix: inputOn ? mul3(AWG_TO_REC709, inM) : AWG_TO_REC709,
+    match: prepareMatch(params.match),
     grade: prepareGrade(params),
     creativeLut: creativeOn ? res.creativeLut : null,
     creativeMix: creativeOn ? params.creativeLut.intensity : 0,
@@ -102,7 +106,8 @@ export function evalPipeline(p: Prepared, c: RGB): RGB {
     sampleLut(p.convLut!, c, p.interp, c)
   }
 
-  // 3. Etapa creativa: correcciones estilo DaVinci y después el LUT creativo con intensidad
+  // 3. Etapa creativa: match con la referencia, correcciones estilo DaVinci y el LUT creativo con intensidad
+  if (p.match) evalMatch(p.match, c)
   evalGrade(p.grade, c)
   if (p.creativeLut) {
     sampleLut(p.creativeLut, c, p.interp, tmp)

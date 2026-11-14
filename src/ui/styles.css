@@ -863,3 +863,32 @@ input[type='radio'] {
 .viewer__badge--low {
   top: 40px;
 }
+
+/* Match */
+.match__ref {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.match__thumb {
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  flex: none;
+}
+.match__thumb--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 11px;
+  background: var(--panel-2);
+}
+.match__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}

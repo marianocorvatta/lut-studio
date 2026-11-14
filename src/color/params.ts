@@ -2,6 +2,7 @@
  * Parámetros del look. Es lo que se guarda en el proyecto JSON.
  * Los LUTs externos (conversión y creativo) van aparte, en PipelineResources.
  */
+import { defaultMatch, type MatchParams } from './match'
 
 export type ConversionSource = 'lut' | 'formula'
 export type LutSize = 33 | 65
@@ -77,6 +78,8 @@ export interface LookParams {
     /** clamp final a [0, 1] */
     clamp: boolean
   }
+  /** etapa Match (al comienzo de la etapa creativa): el modelo calculado viaja con el look */
+  match: MatchParams
 }
 
 export const DEFAULT_PIVOT = 0.435
@@ -106,6 +109,7 @@ export const defaultParams = (): LookParams => ({
   splitTone: { shadowHue: 250, shadowAmount: 0, highHue: 70, highAmount: 0, balance: 0 },
   creativeLut: { enabled: true, intensity: 1 },
   output: { clamp: true },
+  match: defaultMatch(),
 })
 
 /** Completa un objeto de parámetros (por ejemplo, de un proyecto viejo) con los valores por defecto. */

@@ -12,6 +12,7 @@ import { CONV_FORMULA, CONV_LUT, type Prepared } from '../color/pipeline'
 import { CURVE_N } from '../color/grade'
 import { createTarget, createTexture, disposeTarget, drawTo, Program, readTarget, type GL, type Target } from './gl'
 import { GRADE_GLSL } from './gradeGlsl'
+import { MATCH_GLSL } from './matchGlsl'
 import { LutCache, type GpuLut } from './lutCache'
 import { LUT_GLSL } from './lutGlsl'
 
@@ -44,6 +45,7 @@ uniform int uClamp;
 out vec4 o;
 ${LUT_GLSL}
 ${GRADE_GLSL}
+${MATCH_GLSL}
 // --- Apple Log (constantes de color/appleLog2.constants.ts) ---
 const float AL_R0 = ${K.R0};
 const float AL_RT = ${K.Rt};
@@ -87,7 +89,8 @@ void main() {
     c = applyLut(uConvLut, uConvSize, uConvKind, uInterp, uConvMin, uConvMax, c);
   }
 
-  // 3. Etapa creativa: correcciones estilo DaVinci y después el LUT creativo con intensidad
+  // 3. Etapa creativa: match con la referencia, correcciones estilo DaVinci y el LUT creativo con intensidad
+  if (uMatchOn == 1) c = matchStage(c);
   c = gradeStage(c);
   if (uCreativeOn == 1) {
     vec3 t = applyLut(uCreativeLut, uCreativeSize, uCreativeKind, uInterp, uCreativeMin, uCreativeMax, c);
@@ -160,6 +163,18 @@ export class Baker {
     prog.i('uSplitOn', gr.splitOn ? 1 : 0).f('uSplitBalance', gr.splitBalance)
     gl.uniform2f(prog.loc('uSplitShadow'), gr.splitShadow[0], gr.splitShadow[1])
     gl.uniform2f(prog.loc('uSplitHigh'), gr.splitHigh[0], gr.splitHigh[1])
+
+    const pm = p.match
+    prog.i('uMatchOn', pm ? 1 : 0)
+    if (pm) {
+      prog.f('uMatchK', pm.k).f('uMatchProtect', pm.protect).i('uMatchN', pm.n)
+      gl.uniform1fv(prog.loc('uMatchX'), pm.x)
+      gl.uniform1fv(prog.loc('uMatchY'), pm.y)
+      gl.uniform1fv(prog.loc('uMatchM'), pm.m)
+      gl.uniform4fv(prog.loc('uMatchA'), pm.A)
+      gl.uniform2fv(prog.loc('uMatchT'), pm.t)
+      gl.uniform2f(prog.loc('uMatchSkin'), pm.skin[0], pm.skin[1])
+    }
 
     drawTo(gl, this.target)
     this.cpuCopy = null

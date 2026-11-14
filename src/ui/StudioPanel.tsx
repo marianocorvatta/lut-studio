@@ -7,6 +7,7 @@ import { exportCube, openProject, pickSlotLut, saveProject } from './actions'
 import { LutSlot, Section, Slider, Toggle } from './controls'
 import { AlertsPanel } from './AlertsPanel'
 import { GradePanel } from './GradePanel'
+import { MatchPanel } from './MatchPanel'
 import { inputIsNeutral } from '../color/variants'
 import { useApp } from './store'
 
@@ -187,6 +188,8 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
           </>
         )}
       </Section>
+
+      <MatchPanel />
 
       <GradePanel />
 

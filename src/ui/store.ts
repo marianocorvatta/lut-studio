@@ -4,7 +4,7 @@ import { defaultParams, type LookParams, type LutSize } from '../color/params'
 import type { CompareMode, DisplayTransform } from '../gpu/renderer'
 import type { ScopeMode } from '../gpu/scopes'
 import type { FloatImage } from '../io/image'
-import type { FrameRef, LutRef } from '../io/project'
+import type { FrameRef, LutRef, ReferenceRef } from '../io/project'
 import type { CompareStats } from '../color/compare'
 import { DEFAULT_ANALYZE } from '../color/analyze'
 import type { WorkerOut } from '../color/analyze.worker'
@@ -30,6 +30,20 @@ export interface Frame {
   /** etiqueta editable ("piel", "cielo", "noche") */
   label: string
   image: FloatImage
+}
+
+/** Imagen de referencia del Match (imagen de display, convertida a Rec.709 γ2.4 según su perfil ICC). */
+export interface ReferenceImage {
+  name: string
+  /** archivo original (para incluirlo en el proyecto y mostrarlo) */
+  bytes: ArrayBuffer
+  hash: string
+  width: number
+  height: number
+  /** perfil ICC usado para convertirla */
+  profile: string
+  /** muestra de píxeles en Rec.709 γ2.4, RGB intercalado */
+  samples: Float32Array
 }
 
 export interface NamedLut {
@@ -83,6 +97,12 @@ interface AppState {
   embedFrames: boolean
   /** frames que pide el proyecto abierto y todavía no se cargaron */
   missingFrames: FrameRef[]
+  reference: ReferenceImage | null
+  embedReference: boolean
+  /** referencia que pide el proyecto abierto y no venía incluida */
+  missingReference: ReferenceRef | null
+  /** huella de los datos de origen (frames, entrada, conversión) con que se calculó el match */
+  matchKey: string | null
   interpolation: Interpolation
   display: DisplayTransform
   compare: CompareMode
@@ -128,6 +148,10 @@ interface AppState {
   setScopesAllFrames: (v: boolean) => void
   setEmbedFrames: (v: boolean) => void
   setMissingFrames: (refs: FrameRef[]) => void
+  setReference: (r: ReferenceImage | null) => void
+  setEmbedReference: (v: boolean) => void
+  setMissingReference: (r: ReferenceRef | null) => void
+  setMatchKey: (k: string | null) => void
   setInterpolation: (i: Interpolation) => void
   setDisplay: (d: DisplayTransform) => void
   setCompare: (c: CompareMode) => void
@@ -183,6 +207,10 @@ export const useApp = create<AppState>((set, get) => ({
   scopesAllFrames: false,
   embedFrames: false,
   missingFrames: [],
+  reference: null,
+  embedReference: false,
+  missingReference: null,
+  matchKey: null,
   interpolation: 'tetrahedral',
   display: 'rec709-srgb',
   compare: 'off',
@@ -253,6 +281,10 @@ export const useApp = create<AppState>((set, get) => ({
   setScopesAllFrames: (scopesAllFrames) => set({ scopesAllFrames }),
   setEmbedFrames: (embedFrames) => set({ embedFrames }),
   setMissingFrames: (missingFrames) => set({ missingFrames }),
+  setReference: (reference) => set({ reference }),
+  setEmbedReference: (embedReference) => set({ embedReference }),
+  setMissingReference: (missingReference) => set({ missingReference }),
+  setMatchKey: (matchKey) => set({ matchKey }),
   setInterpolation: (interpolation) => set({ interpolation }),
   setDisplay: (display) => set({ display }),
   setCompare: (compare) => set({ compare }),
