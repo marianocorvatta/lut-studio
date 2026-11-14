@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { prepare } from '../color/pipeline'
+import { defaultParams } from '../color/params'
+import { cbcrAngle, REC709_VECTORS } from '../color/vectors'
 import type { FloatImage } from '../io/image'
 import { Renderer } from './renderer'
 import { WAVE_MAX, WAVE_MIN } from './scopes'
@@ -55,6 +58,34 @@ describe('scopes en GPU', () => {
     let center = 0
     for (const [x, y] of [[127, 127], [128, 127], [127, 128], [128, 128]]) center += vs.data[(y * vs.width + x) * 4]
     expect(center).toBe(128 * 64)
+    r.dispose()
+  })
+
+  it('vectorscopio: la rueda empujada hacia una marca mueve la imagen en el ángulo de esa marca', () => {
+    const r = new Renderer(makeCanvas(64, 64))
+    r.setImage(solidImage(64, 32, () => [0.5, 0.5, 0.5]))
+    for (const v of REC709_VECTORS) {
+      const params = defaultParams()
+      const a = (v.angle * Math.PI) / 180
+      params.grade.gain = { ...params.grade.gain, x: Math.cos(a), y: Math.sin(a) }
+      const lut = r.bake(prepare(params, { conversionLut: null, creativeLut: null }, 'tetrahedral'), 33)
+      r.setLayers([{ lut, opacity: 1 }])
+      const vs = r.computeScope('vectorscope')!
+      // centroide de la densidad, fila 0 abajo: x = Cb, y = Cr
+      let sx = 0
+      let sy = 0
+      let n = 0
+      for (let y = 0; y < vs.height; y++)
+        for (let x = 0; x < vs.width; x++) {
+          const d = vs.data[(y * vs.width + x) * 4]
+          sx += d * (x + 0.5 - vs.width / 2)
+          sy += d * (y + 0.5 - vs.height / 2)
+          n += d
+        }
+      expect(n).toBe(64 * 32)
+      const got = cbcrAngle(sx / n, sy / n)
+      expect(Math.abs(((got - v.angle + 540) % 360) - 180), v.name).toBeLessThan(1.5)
+    }
     r.dispose()
   })
 })

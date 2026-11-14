@@ -12,3 +12,4 @@ coverage
 src-tauri/target
 public/_smoke
 .playwright-mcp
+*.tsbuildinfo

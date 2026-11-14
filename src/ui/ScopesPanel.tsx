@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { REC709_VECTORS } from '../color/vectors'
 import type { Renderer } from '../gpu/renderer'
 import { WAVE_MAX, WAVE_MIN, type ScopeImage, type ScopeMode } from '../gpu/scopes'
 import { useApp } from './store'
@@ -71,21 +72,12 @@ function vectorGrid(ctx: CanvasRenderingContext2D, S: number) {
   ctx.moveTo(c + 0.5, 0)
   ctx.lineTo(c + 0.5, S)
   ctx.stroke()
-  // objetivos de las primarias y secundarias Rec.709 al 75 %
-  const targets: [string, number, number, number][] = [
-    ['R', 0.75, 0, 0],
-    ['Mg', 0.75, 0, 0.75],
-    ['B', 0, 0, 0.75],
-    ['Cy', 0, 0.75, 0.75],
-    ['G', 0, 0.75, 0],
-    ['Yl', 0.75, 0.75, 0],
-  ]
-  for (const [t, r, g, b] of targets) {
-    const Y = 0.2126 * r + 0.7152 * g + 0.0722 * b
-    const x = c + ((b - Y) / 1.8556) * S
-    const y = c - ((r - Y) / 1.5748) * S
+  // objetivos de las primarias y secundarias Rec.709 al 75 % (misma geometría que las ruedas)
+  for (const v of REC709_VECTORS) {
+    const x = c + v.cb * 0.75 * S
+    const y = c - v.cr * 0.75 * S
     ctx.strokeRect(x - 4, y - 4, 8, 8)
-    ctx.fillText(t, x + 6, y + 3)
+    ctx.fillText(v.name, x + 6, y + 3)
   }
   // línea de tono de piel (eje I, ~123° desde +Cb)
   const a = (123 * Math.PI) / 180
