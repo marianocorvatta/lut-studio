@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+public/_smoke
+tiff-examples-apple-log-2
+.playwright-mcp
+*.tsbuildinfo

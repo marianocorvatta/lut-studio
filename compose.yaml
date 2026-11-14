@@ -1,0 +1,8 @@
+services:
+  lut-studio:
+    build: .
+    image: lut-studio
+    container_name: lut-studio
+    ports:
+      - "8173:80"
+    restart: unless-stopped

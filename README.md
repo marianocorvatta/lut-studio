@@ -44,6 +44,14 @@ npx playwright install chromium
 npm test
 ```
 
+### Con Docker
+
+```bash
+docker compose up -d --build
+```
+
+Queda en http://localhost:8173. Para detenerla: `docker compose down`.
+
 ## Validar un LUT en DaVinci
 
 1. En la pestaña de validación, descargá el chart (TIFF 16 bits, 1920×1080).
