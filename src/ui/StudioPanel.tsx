@@ -7,6 +7,7 @@ import { exportCube, openProject, pickSlotLut, saveProject } from './actions'
 import { LutSlot, Section, Slider, Toggle } from './controls'
 import { AlertsPanel } from './AlertsPanel'
 import { GradePanel } from './GradePanel'
+import { inputIsNeutral } from '../color/variants'
 import { useApp } from './store'
 
 const lutMeta = (l: Lut) => `${l.kind} · ${l.kind === '3D' ? `${l.size}³` : l.size}${l.title ? ` · ${l.title}` : ''}`
@@ -20,6 +21,8 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
   const missing = useApp((s) => s.missingLuts)
   const embedLuts = useApp((s) => s.embedLuts)
   const embedFrames = useApp((s) => s.embedFrames)
+  const exportKind = useApp((s) => s.exportKind)
+  const previewLookOnly = useApp((s) => s.previewLookOnly)
   const canUndo = useApp((s) => s.history.past.length > 0 || JSON.stringify(s.history.committed) !== JSON.stringify(s.params))
   const canRedo = useApp((s) => s.history.future.length > 0)
   const interpolation = useApp((s) => s.interpolation)
@@ -224,12 +227,32 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
             <option value={65}>65 × 65 × 65</option>
           </select>
         </label>
+        <label className="field field--block">
+          <span>Exportar</span>
+          <select value={exportKind} onChange={(e) => useApp.getState().setExportKind(e.target.value as 'full' | 'look')}>
+            <option value="full">LUT completo (log → Rec.709 + look)</option>
+            <option value="look">Solo look (Rec.709 γ2.4 → Rec.709 γ2.4)</option>
+          </select>
+        </label>
+        <Toggle
+          label="Preview como lo vería con solo el look"
+          checked={previewLookOnly}
+          onChange={(v) => useApp.getState().setPreviewLookOnly(v)}
+          title="Aplica la conversión y después el LUT de solo look, en cadena, como en DaVinci con un Color Space Transform antes del LUT"
+        />
+        {exportKind === 'look' && !inputIsNeutral(params) && (
+          <p className="issue">
+            La exposición y el balance de blancos trabajan sobre la señal log y no entran en el LUT de solo look: al exportar
+            quedan afuera.
+          </p>
+        )}
         <button className="primary" onClick={exportCube}>
           Exportar .cube…
         </button>
         <p className="hint">
-          El archivo se escribe leyendo de la GPU el mismo LUT que se está usando para el preview. En DaVinci usá la misma
-          interpolación que acá (Project Settings → Color Management → 3D lookup table interpolation).
+          {exportKind === 'look'
+            ? 'Hornea la etapa creativa completa (incluido el LUT creativo y su intensidad) sobre una grilla Rec.709 0–1. Usalo después de convertir a Rec.709 γ2.4 (Color Space Transform en DaVinci) o con material de otras cámaras ya convertido. Con la entrada en neutro, conversión + este LUT da lo mismo que el LUT completo salvo el error de interpolar dos LUTs en cadena.'
+            : 'El archivo se escribe leyendo de la GPU el mismo LUT que se está usando para el preview. En DaVinci usá la misma interpolación que acá (Project Settings → Color Management → 3D lookup table interpolation).'}
         </p>
       </Section>
     </div>

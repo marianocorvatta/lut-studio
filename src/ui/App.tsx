@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { applyLutStack, type RGB } from '../color/lut'
 import { prepare } from '../color/pipeline'
+import { prepareConversion, prepareLookOnly } from '../color/variants'
 import type { RenderLayer } from '../gpu/renderer'
 import { readFile } from '../io/platform'
 import { exportCube, handleDroppedFiles, openImage, openProject, saveProject } from './actions'
@@ -45,7 +46,14 @@ export function App() {
     () => prepare(params, { conversionLut: conversionLut?.lut ?? null, creativeLut: creativeLut?.lut ?? null }, interpolation),
     [params, conversionLut, creativeLut, interpolation],
   )
-  const bake = useMemo(() => ({ prepared, size: lutSize }), [prepared, lutSize])
+  const previewLookOnly = useApp((s) => s.previewLookOnly)
+  const bake = useMemo(() => {
+    const luts = { conversionLut: conversionLut?.lut ?? null, creativeLut: creativeLut?.lut ?? null }
+    const lookOnly = previewLookOnly
+      ? { conv: prepareConversion(params, luts, interpolation, false), look: prepareLookOnly(params, luts, interpolation) }
+      : null
+    return { prepared, size: lutSize, lookOnly }
+  }, [prepared, lutSize, previewLookOnly, params, conversionLut, creativeLut, interpolation])
   useDiagnostics(prepared, lutSize, mode === 'studio')
   const validation = useApp((s) => s.validation)
   const validateImage = useMemo(

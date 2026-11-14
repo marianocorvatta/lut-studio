@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseCube, writeCube } from '../color/cube'
 import { identityLut3D, sampleLut3D, type Interpolation, type Lut1D, type Lut3D } from '../color/lut'
 import { defaultParams } from '../color/params'
+import { prepareLookOnly } from '../color/variants'
 import { bakeCpu, evalPipeline, prepare } from '../color/pipeline'
 import type { FloatImage } from '../io/image'
 import { Baker } from './baker'
@@ -271,5 +272,28 @@ describe('el preview es el LUT', () => {
     expect(diff(gotId, clamped).max).toBeLessThan(2e-6)
     r.dispose()
     canvas.remove()
+  })
+})
+
+describe('solo look', () => {
+  it('el LUT de solo look horneado en GPU coincide con la referencia en CPU', () => {
+    const r = new Renderer(makeCanvas(16, 16))
+    const params = defaultParams()
+    params.input.exposure = 1 // no entra al look
+    params.grade.contrast = 1.2
+    params.grade.saturation = 1.15
+    params.grade.gain = { x: 0.04, y: -0.02, master: 1.05 }
+    params.creativeLut = { enabled: true, intensity: 0.5 }
+    const luts = { conversionLut: wavyLut(33, 3), creativeLut: wavyLut(17, 4) }
+    for (const interp of ['tetrahedral', 'trilinear'] as const) {
+      const p = prepareLookOnly(params, luts, interp)
+      expect(p.convMode).toBe(0)
+      expect(p.inputOn).toBe(false)
+      r.bakeAux('look', p, 33)
+      const gpu = r.readAux('look')
+      const cpu = bakeCpu(p, 33)
+      expect(diff(gpu.data, cpu.data).max).toBeLessThan(1e-4)
+    }
+    r.dispose()
   })
 })

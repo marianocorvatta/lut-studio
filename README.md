@@ -17,6 +17,7 @@ Abrís un frame (TIFF o PNG de 16 bits), lo convertís a Rec.709, lo corregís y
   - un LUT creativo con intensidad regulable.
 - **Varios frames:** hasta 6 frames a la vez, con etiqueta editable. Se edita uno (el principal) y la grilla muestra todos con el mismo LUT. Los scopes pueden mostrar el principal o todos combinados.
 - **Alertas del LUT:** overlay con falso color para los píxeles que recortan (por debajo de 0 o por encima de 1 antes del clamp final), y diagnóstico de quiebres e inversiones de luminancia en el look. Muestra cuántas celdas del LUT tienen cada problema y qué porcentaje de los píxeles de tus frames cae en ellas. Se calcula en un worker, sin trabar los controles.
+- **Exportar solo el look:** además del LUT completo (log → Rec.709 + look), un `.cube` de Rec.709 γ2.4 a Rec.709 γ2.4 con solo la parte creativa, para usar después de un Color Space Transform o con material de otras cámaras. La vista previa "como lo vería con solo el look" aplica la conversión y después ese LUT, en cadena. Con la entrada en neutro coincide con el LUT completo salvo el error de interpolar dos LUTs en cadena (en un look típico, promedio 1.1e-3 en 33³ y 3.9e-4 en 65³; el máximo, 0.09 y 0.06, aparece cerca del negro en colores saturados).
 - **Modo "Probar .cube":** apila varios LUTs con orden, opacidad y on/off, y los compara con el original con una cortina.
 - **Scopes:** waveform, parade RGB, vectorscopio e histograma, calculados sobre la imagen completa.
 - **Proyectos:** se guardan en JSON. Hay deshacer/rehacer y atajos de teclado.

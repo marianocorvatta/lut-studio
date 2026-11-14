@@ -1,8 +1,10 @@
 import { parseCube, writeCube } from '../color/cube'
 import type { Lut } from '../color/lut'
+import { inputIsNeutral, prepareLookOnly } from '../color/variants'
 import { decodeImage, type FloatImage } from '../io/image'
 import { frameHash, lutHash, parseProject, serializeProject } from '../io/project'
 import { CUBE_ACCEPT, decodeText, IMAGE_ACCEPT, pickFiles, PROJECT_ACCEPT, saveFile, type PickedFile } from '../io/platform'
+import { exportNames } from './exportNames'
 import { MAX_FRAMES, useApp } from './store'
 import { viewerApi } from './Viewer'
 
@@ -195,22 +197,46 @@ export async function handleDroppedFiles(files: PickedFile[]): Promise<void> {
     useApp.getState().notify('warn', 'Archivo no reconocido. Se aceptan TIFF, PNG, JPEG, .cube y proyectos .json.')
 }
 
-/** Exporta el LUT horneado: se lee de la GPU la misma textura float que usa el preview. */
+/**
+ * Exporta el LUT. Completo: se lee de la GPU la misma textura float que usa el preview. Solo look: se hornea en
+ * GPU la etapa creativa completa (incluido el LUT creativo) sobre la grilla identidad Rec.709 0..1, sin la
+ * etapa de entrada ni la conversión.
+ */
 export function exportCube(): void {
   const app = useApp.getState()
   const r = viewerApi.renderer
   if (!r) return
   try {
-    const lut = r.readBaked()
+    const kind = app.exportKind
+    const luts = { conversionLut: app.conversionLut?.lut ?? null, creativeLut: app.creativeLut?.lut ?? null }
+    let lut
+    if (kind === 'look') {
+      r.bakeAux('look-export', prepareLookOnly(app.params, luts, app.interpolation), app.lutSize)
+      lut = r.readAux('look-export')
+    } else lut = r.readBaked()
     const base = projectBase()
-    const title = `LUT Studio - ${base}`
-    const comments = [
-      'Generado con LUT Studio',
-      `Conversion: ${app.params.conversion.enabled ? (app.params.conversion.source === 'lut' ? (app.conversionLut?.name ?? 'sin LUT') : 'formula') : 'apagada'}`,
-      `Interpolacion usada en el preview: ${app.interpolation === 'tetrahedral' ? 'tetraedrica' : 'trilineal'}`,
-    ]
-    saveFile(`${base}_${lut.size}.cube`, writeCube(lut, { title, comments }), 'text/plain')
-    app.notify('info', `Exportado ${base}_${lut.size}.cube (${lut.size}³).`)
+    const { file, title } = exportNames(base, kind, lut.size, app.params.conversion.enabled)
+    const interpText = `Interpolacion usada en el preview: ${app.interpolation === 'tetrahedral' ? 'tetraedrica' : 'trilineal'}`
+    const comments =
+      kind === 'look'
+        ? [
+            'Generado con LUT Studio',
+            'Solo look: Rec.709 gamma 2.4 -> Rec.709 gamma 2.4 (sin conversion ni etapa de entrada)',
+            'Usar despues de convertir a Rec.709 gamma 2.4 (por ejemplo, Color Space Transform en DaVinci)',
+            interpText,
+          ]
+        : [
+            'Generado con LUT Studio',
+            `Conversion: ${app.params.conversion.enabled ? (app.params.conversion.source === 'lut' ? (app.conversionLut?.name ?? 'sin LUT') : 'formula') : 'apagada'}`,
+            interpText,
+          ]
+    saveFile(file, writeCube(lut, { title, comments }), 'text/plain')
+    app.notify('info', `Exportado ${file} (${lut.size}³).`)
+    if (kind === 'look' && !inputIsNeutral(app.params))
+      app.notify(
+        'warn',
+        'La etapa de entrada (exposición y balance de blancos sobre la señal log) no entra en el LUT de solo look: quedó afuera. Aplicala antes de la conversión en DaVinci.',
+      )
   } catch (e) {
     app.notify('error', `No se pudo exportar: ${errText(e)}`)
   }

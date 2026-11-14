@@ -99,6 +99,10 @@ interface AppState {
   /** incluir los LUTs dentro del JSON al guardar el proyecto */
   embedLuts: boolean
   scopeMode: ScopeMode | 'off'
+  /** qué se exporta: el LUT completo (log -> Rec.709 + look) o solo el look (Rec.709 -> Rec.709) */
+  exportKind: 'full' | 'look'
+  /** preview "como lo vería con solo el look": conversión y después el LUT del look, en cadena */
+  previewLookOnly: boolean
   alerts: AlertSettings
   diagnostics: Diagnostics | null
   diagBusy: boolean
@@ -138,6 +142,8 @@ interface AppState {
   setEmbedLuts: (v: boolean) => void
   setScopeMode: (m: ScopeMode | 'off') => void
   setAlerts: (patch: Partial<AlertSettings>) => void
+  setExportKind: (k: 'full' | 'look') => void
+  setPreviewLookOnly: (v: boolean) => void
   setDiagnostics: (d: Diagnostics | null) => void
   setDiagBusy: (b: boolean) => void
   updateValidation: (patch: Partial<ValidationState>) => void
@@ -187,6 +193,8 @@ export const useApp = create<AppState>((set, get) => ({
   missingLuts: { conversion: null, creative: null },
   embedLuts: false,
   scopeMode: 'waveform',
+  exportKind: 'full',
+  previewLookOnly: false,
   alerts: {
     clip: false,
     breaks: false,
@@ -284,6 +292,8 @@ export const useApp = create<AppState>((set, get) => ({
   setEmbedLuts: (embedLuts) => set({ embedLuts }),
   setScopeMode: (scopeMode) => set({ scopeMode }),
   setAlerts: (patch) => set((s) => ({ alerts: { ...s.alerts, ...patch } })),
+  setExportKind: (exportKind) => set({ exportKind }),
+  setPreviewLookOnly: (previewLookOnly) => set({ previewLookOnly }),
   setDiagnostics: (diagnostics) => set({ diagnostics }),
   setDiagBusy: (diagBusy) => set({ diagBusy }),
   updateValidation: (patch) => set((s) => ({ validation: { ...s.validation, ...patch } })),

@@ -860,3 +860,6 @@ input[type='radio'] {
   font-style: normal;
   color: var(--text);
 }
+.viewer__badge--low {
+  top: 40px;
+}

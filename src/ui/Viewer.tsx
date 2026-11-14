@@ -26,7 +26,12 @@ export interface ViewerProps {
    * Modo Estudio: pipeline a hornear. El preview aplica a la imagen el LUT horneado,
    * que es exactamente el que se exporta.
    */
-  bake?: { prepared: Prepared; size: number }
+  bake?: {
+    prepared: Prepared
+    size: number
+    /** preview "como lo vería con solo el look": la conversión y después el LUT del look, en cadena */
+    lookOnly?: { conv: Prepared | null; look: Prepared } | null
+  }
   /** imagen a mostrar en lugar de los frames del estado (pantalla de validación); sin grilla */
   image?: FloatImage | null
   /** se llama después de cada render (para scopes) */
@@ -161,7 +166,12 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
     if (!r) return
     try {
       if (bake) {
-        r.setLayers([{ lut: r.bake(bake.prepared, bake.size), opacity: 1 }])
+        const full = r.bake(bake.prepared, bake.size)
+        const lo = bake.lookOnly
+        if (lo) {
+          const chain = [lo.conv ? r.bakeAux('conv', lo.conv, bake.size) : null, r.bakeAux('look', lo.look, bake.size)]
+          r.setLayers(chain.filter((l) => l !== null).map((lut) => ({ lut, opacity: 1 })))
+        } else r.setLayers([{ lut: full, opacity: 1 }])
         // overlay de recorte en vivo: el mismo pipeline sin el clamp final (no se exporta)
         if (useApp.getState().alerts.clip) r.setClipLut(r.bakeUnclamped(bake.prepared, bake.size))
       } else {
@@ -226,8 +236,11 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
     const o = (y * img.width + x) * 4
     const input: RGB = [img.data[o], img.data[o + 1], img.data[o + 2]]
     // En modo Estudio la salida es el LUT horneado (leído de la GPU) aplicado al píxel: lo mismo que hará DaVinci.
+    const interp = useApp.getState().interpolation
     const output = bake
-      ? sampleLut3D(r.readBaked(), input, useApp.getState().interpolation)
+      ? bake.lookOnly
+        ? sampleLut3D(r.readAux('look'), bake.lookOnly.conv ? sampleLut3D(r.readAux('conv'), input, interp) : input, interp)
+        : sampleLut3D(r.readBaked(), input, interp)
       : computeOutput
         ? computeOutput(input)
         : input
@@ -368,6 +381,7 @@ export function Viewer({ layers, computeOutput, bake, onRendered, image: imageOv
           {compare === 'before' ? 'ANTES' : 'ANTES │ DESPUÉS'}
         </div>
       )}
+      {bake?.lookOnly && image && <div className="viewer__badge viewer__badge--low">PREVIEW: CONVERSIÓN + SOLO LOOK</div>}
       {grid &&
         cells.map((c, i) => {
           const f = frames[i]
