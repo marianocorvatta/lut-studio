@@ -3,10 +3,11 @@ import { APPLE_WIDE_GAMUT } from '../color/appleLog2.constants'
 import type { Lut } from '../color/lut'
 import { defaultParams, type LutSize } from '../color/params'
 import { bakeCpu, compareLuts, CONV_OFF, prepare, type Prepared } from '../color/pipeline'
-import { exportCube, openProject, pickSlotLut, saveProject } from './actions'
+import { exportCube, openProject, pickSlotLut, projectBase, saveProject } from './actions'
 import { LutSlot, Section, Slider, Toggle } from './controls'
 import { AlertsPanel } from './AlertsPanel'
 import { GradePanel } from './GradePanel'
+import { exportNames } from './exportNames'
 import { MatchPanel } from './MatchPanel'
 import { inputIsNeutral } from '../color/variants'
 import { useApp } from './store'
@@ -23,6 +24,9 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
   const embedLuts = useApp((s) => s.embedLuts)
   const embedFrames = useApp((s) => s.embedFrames)
   const exportKind = useApp((s) => s.exportKind)
+  const exportName = useApp((s) => s.exportName)
+  useApp((s) => s.image) // el nombre automático depende del frame principal
+  const autoName = exportNames(projectBase(), exportKind, lutSize, params.conversion.enabled).file.replace(/\.cube$/, '')
   const previewLookOnly = useApp((s) => s.previewLookOnly)
   const canUndo = useApp((s) => s.history.past.length > 0 || JSON.stringify(s.history.committed) !== JSON.stringify(s.params))
   const canRedo = useApp((s) => s.history.future.length > 0)
@@ -249,6 +253,24 @@ export function StudioPanel({ prepared }: { prepared: Prepared }) {
             quedan afuera.
           </p>
         )}
+        <label className="field field--block" title="Vacío: nombre automático (nombre del frame + tipo de LUT + tamaño). Se usa también como TITLE del .cube.">
+          <span>Nombre</span>
+          <span className="export-name">
+            <input
+              type="text"
+              value={exportName}
+              placeholder={autoName}
+              spellCheck={false}
+              onChange={(e) => useApp.getState().setExportName(e.target.value)}
+            />
+            <span className="hint">.cube</span>
+            {exportName && (
+              <button className="icon" title="Volver al nombre automático" onClick={() => useApp.getState().setExportName('')}>
+                ↺
+              </button>
+            )}
+          </span>
+        </label>
         <button className="primary" onClick={exportCube}>
           Exportar .cube…
         </button>

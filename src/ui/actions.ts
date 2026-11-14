@@ -100,7 +100,7 @@ export async function pickSlotLut(slot: 'conversion' | 'creative'): Promise<void
   if (picked) setSlotLut(slot, picked.name, picked.lut)
 }
 
-const projectBase = () => (useApp.getState().image?.name ?? 'look').replace(/\.[^.]+$/, '')
+export const projectBase = () => (useApp.getState().image?.name ?? 'look').replace(/\.[^.]+$/, '')
 
 export function saveProject(): void {
   const app = useApp.getState()
@@ -230,7 +230,7 @@ export function exportCube(): void {
       lut = r.readAux('look-export')
     } else lut = r.readBaked()
     const base = projectBase()
-    const { file, title } = exportNames(base, kind, lut.size, app.params.conversion.enabled)
+    const { file, title } = exportNames(base, kind, lut.size, app.params.conversion.enabled, app.exportName)
     const interpText = `Interpolacion usada en el preview: ${app.interpolation === 'tetrahedral' ? 'tetraedrica' : 'trilineal'}`
     const comments =
       kind === 'look'

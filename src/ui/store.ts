@@ -123,6 +123,8 @@ interface AppState {
   skinLine: boolean
   /** qué se exporta: el LUT completo (log -> Rec.709 + look) o solo el look (Rec.709 -> Rec.709) */
   exportKind: 'full' | 'look'
+  /** nombre del .cube exportado; vacío = automático (base + tipo + tamaño) */
+  exportName: string
   /** preview "como lo vería con solo el look": conversión y después el LUT del look, en cadena */
   previewLookOnly: boolean
   alerts: AlertSettings
@@ -169,6 +171,7 @@ interface AppState {
   setScopeMode: (m: ScopeMode | 'off') => void
   setAlerts: (patch: Partial<AlertSettings>) => void
   setExportKind: (k: 'full' | 'look') => void
+  setExportName: (n: string) => void
   setSkinLine: (v: boolean) => void
   setPreviewLookOnly: (v: boolean) => void
   setDiagnostics: (d: Diagnostics | null) => void
@@ -226,6 +229,7 @@ export const useApp = create<AppState>((set, get) => ({
   scopeMode: 'waveform',
   skinLine: true,
   exportKind: 'full',
+  exportName: '',
   previewLookOnly: false,
   alerts: {
     clip: false,
@@ -329,6 +333,7 @@ export const useApp = create<AppState>((set, get) => ({
   setScopeMode: (scopeMode) => set({ scopeMode }),
   setAlerts: (patch) => set((s) => ({ alerts: { ...s.alerts, ...patch } })),
   setExportKind: (exportKind) => set({ exportKind }),
+  setExportName: (exportName) => set({ exportName }),
   setSkinLine: (skinLine) => set({ skinLine }),
   setPreviewLookOnly: (previewLookOnly) => set({ previewLookOnly }),
   setDiagnostics: (diagnostics) => set({ diagnostics }),

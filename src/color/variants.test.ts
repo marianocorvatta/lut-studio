@@ -95,5 +95,9 @@ describe('exportar solo el look', () => {
     expect(exportNames('MiLook', 'look', 33)).toEqual({ file: 'MiLook_look-only_Rec709_33.cube', title: 'MiLook_look-only_Rec709' })
     expect(exportNames('MiLook', 'full', 65)).toEqual({ file: 'MiLook_full_AppleLog2-to-Rec709_65.cube', title: 'MiLook_full_AppleLog2-to-Rec709' })
     expect(exportNames('MiLook', 'full', 33, false).title).toBe('MiLook_full')
+    // nombre elegido: se usa tal cual (sin duplicar .cube y sin caracteres inválidos) para el archivo y el TITLE
+    expect(exportNames('MiLook', 'look', 33, true, '  Verano 2026 ')).toEqual({ file: 'Verano 2026.cube', title: 'Verano 2026' })
+    expect(exportNames('MiLook', 'full', 33, true, 'a/b:c.cube')).toEqual({ file: 'a_b_c.cube', title: 'a_b_c' })
+    expect(exportNames('MiLook', 'full', 33, true, '   ').file).toBe('MiLook_full_AppleLog2-to-Rec709_33.cube')
   })
 })

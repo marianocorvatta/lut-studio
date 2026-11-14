@@ -892,3 +892,13 @@ input[type='radio'] {
   gap: 4px;
   min-width: 0;
 }
+.export-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.export-name input {
+  flex: 1;
+  min-width: 0;
+}
